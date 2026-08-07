@@ -1,43 +1,83 @@
 # MyBB Rotating Ads Plugin
 
-This plugin owns Sick Gaming's rotating promotion/ad behavior for MyBB.
+Standalone square and banner advertisement rotation for MyBB 1.8.
 
-## Objective
+## Features
 
-Move promotion-specific code out of `sg-website-theme` and into this plugin so the theme stays focused on layout, templates, and styling.
+- Independent square and banner ad inventories.
+- Random server-side selection on each page request.
+- Per-ad enabled flags.
+- Plugin-owned responsive styling.
+- Safe image, link, and alternative-text output.
+- Empty output when a slot has no enabled ads.
 
-In particular, `sg-promotions.js` should live with this plugin if it controls promotion slots, ad rotation, ad rendering, or related frontend behavior.
+## Install
 
-## Repo Boundary
+Copy the contents of `Upload/` into the MyBB installation root:
 
-This plugin should own:
-
-- rotating ad/promotion logic;
-- `sg-promotions.js` or equivalent frontend assets;
-- plugin settings for ad slots, rotation timing, enabled/disabled state, and debug behavior;
-- backend/admin behavior needed to manage promotions;
-- documentation for installing and configuring the plugin in MyBB.
-
-The theme repo should own only:
-
-- visual placement of promotion areas;
-- CSS for how promotion slots look;
-- minimal template hooks/placeholders consumed by this plugin.
-
-Example theme-side placeholder:
-
-```html
-<div data-sg-promotion-slot="header"></div>
+```text
+Upload/inc/plugins/rotating_ads.php -> public_html/inc/plugins/rotating_ads.php
+Upload/css/rotating-ads.css -> public_html/css/rotating-ads.css
 ```
 
-## Planned Migration
+Then install and activate `Rotating Ads` under Admin CP → Configuration → Plugins.
 
-1. Confirm whether `sg-promotions.js` is currently required by the live SickGaming.net theme.
-2. Add `sg-promotions.js` to this plugin's asset structure.
-3. Update the plugin to load the script on pages that need promotion slots.
-4. Leave stable template placeholders in `sg-website-theme`.
-5. Remove duplicate promotion JS from `sg-website-theme` after the plugin is confirmed to load it.
+Activation inserts `{$rotating_ads_assets}` after `{$stylesheets}` in `headerinclude`. Deactivation removes it.
 
-## Install Notes
+## Template Variables
 
-Exact install paths should follow MyBB plugin conventions used by this project. Until the plugin structure is finalized, avoid storing live credentials, private config, or production-only values in this repo.
+Place either variable anywhere MyBB evaluates a template:
+
+```html
+{$rotating_ads_square}
+{$rotating_ads_banner}
+```
+
+MyBB/PHP variable names cannot contain hyphens, so the supported variables use underscores rather than names such as `{$rotating-ads-square}`.
+
+The plugin does not impose either slot on a theme. Administrators place `{$rotating_ads_square}` and `{$rotating_ads_banner}` wherever each format belongs.
+
+## Configuration
+
+The plugin creates separate `Square Ads` and `Banner Ads` settings. Enter one ad per line:
+
+```text
+image URL|destination URL|alt text|enabled
+```
+
+Example:
+
+```text
+https://example.com/ad-square.jpg|https://example.com/|Example sponsor|1
+```
+
+Set enabled to `1` or `0`. Blank lines and lines beginning with `#` are ignored. The initial square inventory contains the former hard-coded HostPro advertisement. The banner inventory starts empty.
+
+## Output
+
+Each selected advertisement uses plugin-owned markup and styling:
+
+```html
+<aside class="rotating-ad rotating-ad--square">
+    <div class="rotating-ad__title">Sponsored</div>
+    <a class="rotating-ad__link" rel="sponsored noopener">
+        <img class="rotating-ad__image" />
+    </a>
+</aside>
+```
+
+## Planned VIP Gold Preference
+
+Gitea issue #1 tracks a User CP preference allowing eligible VIP Gold members to hide both ad formats. That preference is not implemented in version 1.0.0.
+
+## Manual Asset Integration
+
+If a customized `headerinclude` lacks `{$stylesheets}`, add this variable manually:
+
+```html
+{$rotating_ads_assets}
+```
+
+## Uninstall
+
+Uninstalling removes the Rotating Ads settings. MyBB deactivates the plugin first, removing its asset insertion.

@@ -1,0 +1,32 @@
+.rotating-ad {
+    margin: 0 0 20px;
+    overflow: hidden;
+    border: 1px solid #252a2d;
+    background: #15191b;
+}
+
+.rotating-ad__title {
+    padding: 8px 10px;
+    background: #151515;
+    color: #fff;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.rotating-ad__link,
+.rotating-ad__image {
+    display: block;
+}
+
+.rotating-ad__image {
+    width: 100%;
+    height: auto;
+}
+
+.rotating-ad--square {
+    max-width: 320px;
+}
+
+.rotating-ad--banner {
+    width: 100%;
+}
