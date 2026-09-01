@@ -81,3 +81,7 @@ If a customized `headerinclude` lacks `{$stylesheets}`, add this variable manual
 ## Uninstall
 
 Uninstalling removes the Rotating Ads settings. MyBB deactivates the plugin first, removing its asset insertion.
+
+## License
+
+Copyright (C) 2026 SickProdigy. Licensed under [GPL-3.0-only](LICENSE).

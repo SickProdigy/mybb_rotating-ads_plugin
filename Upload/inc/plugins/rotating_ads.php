@@ -3,6 +3,8 @@
  * Rotating Ads
  *
  * Configurable square and banner advertisement slots for MyBB.
+ * Copyright (C) 2026 SickProdigy
+ * SPDX-License-Identifier: GPL-3.0-only
  */
 
 if (!defined('IN_MYBB')) {
@@ -15,10 +17,11 @@ function rotating_ads_info()
         'name' => 'Rotating Ads',
         'description' => 'Provides independently configurable square and banner advertisement slots.',
         'website' => 'https://www.sickgaming.net',
-        'author' => 'Sick Gaming',
+        'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
         'version' => '1.0.0',
-        'compatibility' => '18*'
+        'compatibility' => '18*',
+        'license' => 'GPL-3.0-only'
     );
 }
 
