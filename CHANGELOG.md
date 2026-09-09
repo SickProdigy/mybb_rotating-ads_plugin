@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 - 2026-09-09
+
+- Added optional in-page ad rotation with configurable minimum and maximum timing.
+
 ## 0.5.0 - 2026-09-09
 
 - Added independently configurable square and banner advertisement inventories.

@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.5.0',
+        'version' => '0.6.0',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -74,6 +74,11 @@ function rotating_ads_activate()
         'headerinclude',
         '#' . preg_quote('{$rotating_ads_assets}') . '#i',
         ''
+    );
+    find_replace_templatesets(
+        'headerinclude',
+        '#' . preg_quote('{$stylesheets}') . '#i',
+        '{$stylesheets}{$rotating_ads_assets}'
     );
 }
 
@@ -173,6 +178,33 @@ function rotating_ads_ensure_settings()
             'value' => '1',
             'disporder' => 6,
             'gid' => $gid
+        ),
+        array(
+            'name' => 'rotating_ads_enable_rotation',
+            'title' => rotating_ads_lang('rotating_ads_enable_rotation', 'Rotate ads while viewing a page'),
+            'description' => rotating_ads_lang('rotating_ads_enable_rotation_description', 'Cycle through enabled ads without requiring a page reload. Slots with fewer than two enabled ads keep the normal static output.'),
+            'optionscode' => 'yesno',
+            'value' => '0',
+            'disporder' => 7,
+            'gid' => $gid
+        ),
+        array(
+            'name' => 'rotating_ads_rotation_min_seconds',
+            'title' => rotating_ads_lang('rotating_ads_rotation_min_seconds', 'Minimum rotation seconds'),
+            'description' => rotating_ads_lang('rotating_ads_rotation_min_seconds_description', 'Minimum seconds an ad remains visible before the next rotation.'),
+            'optionscode' => 'numeric',
+            'value' => '15',
+            'disporder' => 8,
+            'gid' => $gid
+        ),
+        array(
+            'name' => 'rotating_ads_rotation_max_seconds',
+            'title' => rotating_ads_lang('rotating_ads_rotation_max_seconds', 'Maximum rotation seconds'),
+            'description' => rotating_ads_lang('rotating_ads_rotation_max_seconds_description', 'Maximum seconds an ad remains visible before the next rotation. Values below the minimum are treated as the minimum.'),
+            'optionscode' => 'numeric',
+            'value' => '30',
+            'disporder' => 9,
+            'gid' => $gid
         )
     );
 
@@ -214,9 +246,17 @@ function rotating_ads_build_output()
         ? trim((string)$mybb->settings['rotating_ads_sponsor_label'])
         : rotating_ads_lang('rotating_ads_default_sponsor_label', 'Sponsored');
     $open_new_tab = rotating_ads_setting_enabled('rotating_ads_open_new_tab', true);
+    $rotation_options = rotating_ads_rotation_options();
 
-    $rotating_ads_square = rotating_ads_render_slot('square', $square_ads, $label, $open_new_tab);
-    $rotating_ads_banner = rotating_ads_render_slot('banner', $banner_ads, $label, $open_new_tab);
+    if ($rotation_options['enabled'] && (count($square_ads) > 1 || count($banner_ads) > 1)) {
+        $asset_base = isset($mybb->asset_url) && $mybb->asset_url !== '' ? $mybb->asset_url : $mybb->settings['bburl'];
+        $asset_url = rtrim($asset_base, '/');
+        $script_url = $asset_url . '/jscripts/rotating-ads.js?ver=060';
+        $rotating_ads_assets = '<script type="text/javascript" src="' . htmlspecialchars_uni($script_url) . '" defer="defer"></script>';
+    }
+
+    $rotating_ads_square = rotating_ads_render_slot('square', $square_ads, $label, $open_new_tab, $rotation_options);
+    $rotating_ads_banner = rotating_ads_render_slot('banner', $banner_ads, $label, $open_new_tab, $rotation_options);
 }
 
 function rotating_ads_parse_inventory($value)
@@ -250,25 +290,55 @@ function rotating_ads_parse_inventory($value)
     return $ads;
 }
 
-function rotating_ads_render_slot($format, $ads, $label = 'Sponsored', $open_new_tab = true)
+function rotating_ads_render_slot($format, $ads, $label = 'Sponsored', $open_new_tab = true, $rotation_options = array())
 {
     if (empty($ads)) {
         return '';
     }
 
-    $ad = $ads[array_rand($ads)];
     $format = $format === 'banner' ? 'banner' : 'square';
     $title = trim((string)$label) !== ''
         ? '<div class="rotating-ad__title">' . htmlspecialchars_uni($label) . '</div>'
         : '';
-    $target = $open_new_tab ? ' target="_blank"' : '';
-    $rel = $open_new_tab ? 'sponsored noopener noreferrer' : 'sponsored';
+    $rotate = !empty($rotation_options['enabled']) && count($ads) > 1;
+
+    if ($rotate) {
+        $first_index = array_rand($ads);
+        $first_ad = $ads[$first_index];
+        unset($ads[$first_index]);
+        array_unshift($ads, $first_ad);
+
+        $min = isset($rotation_options['min_seconds']) ? (int)$rotation_options['min_seconds'] : 15;
+        $max = isset($rotation_options['max_seconds']) ? (int)$rotation_options['max_seconds'] : $min;
+        $links = '';
+
+        foreach (array_values($ads) as $index => $ad) {
+            $links .= rotating_ads_render_link($ad, $open_new_tab, $index > 0);
+        }
+
+        return '<aside class="rotating-ad rotating-ad--' . $format . '" data-rotating-ads="1" data-rotating-ads-min="' . (int)$min . '" data-rotating-ads-max="' . (int)$max . '">'
+            . $title
+            . $links
+            . '</aside>';
+    }
+
+    $ad = $ads[array_rand($ads)];
 
     return '<aside class="rotating-ad rotating-ad--' . $format . '">'
         . $title
-        . '<a class="rotating-ad__link" href="' . htmlspecialchars_uni($ad['destination_url']) . '"' . $target . ' rel="' . $rel . '">'
+        . rotating_ads_render_link($ad, $open_new_tab)
+        . '</aside>';
+}
+
+function rotating_ads_render_link($ad, $open_new_tab = true, $hidden = false)
+{
+    $target = $open_new_tab ? ' target="_blank"' : '';
+    $rel = $open_new_tab ? 'sponsored noopener noreferrer' : 'sponsored';
+    $hidden_attribute = $hidden ? ' hidden="hidden"' : '';
+
+    return '<a class="rotating-ad__link" href="' . htmlspecialchars_uni($ad['destination_url']) . '"' . $target . ' rel="' . $rel . '"' . $hidden_attribute . '>'
         . '<img class="rotating-ad__image" src="' . htmlspecialchars_uni($ad['image_url']) . '" alt="' . htmlspecialchars_uni($ad['alt_text']) . '" loading="lazy" />'
-        . '</a></aside>';
+        . '</a>';
 }
 
 function rotating_ads_setting_enabled($name, $default = true)
@@ -280,6 +350,31 @@ function rotating_ads_setting_enabled($name, $default = true)
     }
 
     return (string)$mybb->settings[$name] !== '0';
+}
+
+function rotating_ads_rotation_options()
+{
+    global $mybb;
+
+    $min = isset($mybb->settings['rotating_ads_rotation_min_seconds'])
+        ? (int)$mybb->settings['rotating_ads_rotation_min_seconds']
+        : 15;
+    $max = isset($mybb->settings['rotating_ads_rotation_max_seconds'])
+        ? (int)$mybb->settings['rotating_ads_rotation_max_seconds']
+        : 30;
+
+    $min = max(1, $min);
+    $max = max(1, $max);
+
+    if ($max < $min) {
+        $max = $min;
+    }
+
+    return array(
+        'enabled' => rotating_ads_setting_enabled('rotating_ads_enable_rotation', false),
+        'min_seconds' => $min,
+        'max_seconds' => $max
+    );
 }
 
 function rotating_ads_stylesheet()
@@ -303,6 +398,10 @@ function rotating_ads_stylesheet()
 .rotating-ad__link,
 .rotating-ad__image {
     display: block;
+}
+
+.rotating-ad__link[hidden] {
+    display: none;
 }
 
 .rotating-ad__image {
@@ -558,6 +657,10 @@ window.rotatingAdsEditorLanguage = ' . $strings_json . ';
         return d.querySelector("textarea[name=\"upsetting[" + escapeSelector(name) + "]\"]");
     }
 
+    function findInput(name) {
+        return d.querySelector("input[name=\"upsetting[" + escapeSelector(name) + "]\"]");
+    }
+
     function parseRows(value) {
         var rows = [];
         var lines = String(value || "").split(/\r\n|\r|\n/);
@@ -682,6 +785,34 @@ window.rotatingAdsEditorLanguage = ' . $strings_json . ';
         }
     }
 
+    function setupTimingValidation() {
+        var min = findInput("rotating_ads_rotation_min_seconds");
+        var max = findInput("rotating_ads_rotation_max_seconds");
+
+        if (!min || !max) {
+            return;
+        }
+
+        function normalize() {
+            var minValue = Math.max(1, parseInt(min.value, 10) || 1);
+            var maxValue = Math.max(1, parseInt(max.value, 10) || minValue);
+
+            if (maxValue < minValue) {
+                maxValue = minValue;
+            }
+
+            min.value = minValue;
+            max.value = maxValue;
+        }
+
+        min.addEventListener("change", normalize);
+        max.addEventListener("change", normalize);
+
+        if (min.form) {
+            min.form.addEventListener("submit", normalize);
+        }
+    }
+
     d.addEventListener("DOMContentLoaded", function() {
         fields.forEach(function(config) {
             var textarea = findField(config.name);
@@ -689,6 +820,7 @@ window.rotatingAdsEditorLanguage = ' . $strings_json . ';
                 buildEditor(textarea, config);
             }
         });
+        setupTimingValidation();
     });
 }(window, document));
 </script>';

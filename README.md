@@ -6,6 +6,7 @@ Standalone square and banner advertisement rotation for MyBB 1.8.
 
 - Independent square and banner ad inventories.
 - Random server-side selection on each page request.
+- Optional in-page rotation with configurable timing.
 - Per-ad enabled flags.
 - Theme-conscious responsive styling that can be disabled.
 - Configurable sponsor label and new-tab behavior.
@@ -20,6 +21,7 @@ Copy the contents of `Upload/` into the MyBB installation root:
 Upload/inc/plugins/rotating_ads.php -> public_html/inc/plugins/rotating_ads.php
 Upload/inc/languages/english/rotating_ads.lang.php -> public_html/inc/languages/english/rotating_ads.lang.php
 Upload/inc/languages/english/admin/rotating_ads.lang.php -> public_html/inc/languages/english/admin/rotating_ads.lang.php
+Upload/jscripts/rotating-ads.js -> public_html/jscripts/rotating-ads.js
 ```
 
 Then install and activate `Rotating Ads` under Admin CP → Configuration → Plugins.
@@ -61,6 +63,8 @@ Additional settings:
 - `Hide ads from usergroups`: Comma-separated primary or additional usergroup IDs that should not see ads.
 - `Load plugin CSS`: Disable if your theme provides its own ad styling.
 - `Open ads in a new tab`: Controls whether links include `target="_blank"`.
+- `Rotate ads while viewing a page`: Enables browser-side cycling when a slot has at least two enabled ads.
+- `Minimum rotation seconds` / `Maximum rotation seconds`: Controls the random delay range between ad changes. If maximum is below minimum, the plugin treats it as the minimum.
 
 ## Output
 
@@ -89,6 +93,10 @@ php tests/rotating_ads_test.php
 ## Usergroup Exemptions
 
 To hide both ad formats from VIP Gold or any other group, enter that group's ID in `Hide ads from usergroups`. Primary and additional usergroups are checked.
+
+## In-Page Rotation
+
+By default, the plugin chooses one random ad for each slot on each page request. Enable `Rotate ads while viewing a page` to let the browser cycle through all enabled ads in a populated slot. Visitors without JavaScript still see the initially rendered ad.
 
 ## Uninstall
 

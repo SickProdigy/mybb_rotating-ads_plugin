@@ -185,6 +185,12 @@ class RotatingAdsTestLang
     public $rotating_ads_enable_css_description = 'CSS description';
     public $rotating_ads_open_new_tab = 'Open ads in a new tab';
     public $rotating_ads_open_new_tab_description = 'New tab description';
+    public $rotating_ads_enable_rotation = 'Rotate ads while viewing a page';
+    public $rotating_ads_enable_rotation_description = 'Rotation description';
+    public $rotating_ads_rotation_min_seconds = 'Minimum rotation seconds';
+    public $rotating_ads_rotation_min_seconds_description = 'Minimum rotation description';
+    public $rotating_ads_rotation_max_seconds = 'Maximum rotation seconds';
+    public $rotating_ads_rotation_max_seconds_description = 'Maximum rotation description';
 
     public function load($name)
     {
@@ -222,6 +228,9 @@ $mybb = (object)array(
         'rotating_ads_hidden_groups' => '',
         'rotating_ads_enable_css' => '1',
         'rotating_ads_open_new_tab' => '1',
+        'rotating_ads_enable_rotation' => '0',
+        'rotating_ads_rotation_min_seconds' => '15',
+        'rotating_ads_rotation_max_seconds' => '30',
     ),
     'user' => array(
         'usergroup' => 2,
@@ -238,7 +247,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.5.0',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.6.0',
     'plugin info should expose localized metadata and version'
 );
 
@@ -270,17 +279,53 @@ rotating_ads_test_assert(
     'rendered ad should support hidden labels and same-tab links'
 );
 
+$rotating_ads_multi_inventory = "https://example.com/ad-1.jpg|https://example.com/1|One|1\n"
+    . "https://example.com/ad-2.jpg|https://example.com/2|Two|1\n";
+$rotating_ads_multi_ads = rotating_ads_parse_inventory($rotating_ads_multi_inventory);
+$rotating_ads_rotating_slot = rotating_ads_render_slot(
+    'square',
+    $rotating_ads_multi_ads,
+    'Sponsored',
+    true,
+    array('enabled' => true, 'min_seconds' => 5, 'max_seconds' => 9)
+);
+rotating_ads_test_assert(
+    strpos($rotating_ads_rotating_slot, 'data-rotating-ads="1"') !== false
+    && strpos($rotating_ads_rotating_slot, 'data-rotating-ads-min="5"') !== false
+    && strpos($rotating_ads_rotating_slot, 'data-rotating-ads-max="9"') !== false
+    && substr_count($rotating_ads_rotating_slot, 'class="rotating-ad__link"') === 2
+    && substr_count($rotating_ads_rotating_slot, 'hidden="hidden"') === 1,
+    'rotating slots should render all enabled ads with timing data and one visible fallback'
+);
+
 rotating_ads_test_assert(
     rotating_ads_parse_id_list('4, 8 8 bad 0') === array(4, 8),
     'ID list parser should keep unique positive numeric IDs'
 );
+
+$mybb->settings['rotating_ads_enable_rotation'] = '1';
+$mybb->settings['rotating_ads_rotation_min_seconds'] = '12';
+$mybb->settings['rotating_ads_rotation_max_seconds'] = '5';
+$rotation_options = rotating_ads_rotation_options();
+rotating_ads_test_assert(
+    $rotation_options['enabled'] === true
+    && $rotation_options['min_seconds'] === 12
+    && $rotation_options['max_seconds'] === 12,
+    'rotation options should clamp maximum seconds to the configured minimum'
+);
+$mybb->settings['rotating_ads_enable_rotation'] = '0';
+$mybb->settings['rotating_ads_rotation_min_seconds'] = '15';
+$mybb->settings['rotating_ads_rotation_max_seconds'] = '30';
 
 rotating_ads_ensure_settings();
 rotating_ads_test_assert(
     isset($db->settings['rotating_ads_sponsor_label'])
     && isset($db->settings['rotating_ads_hidden_groups'])
     && isset($db->settings['rotating_ads_enable_css'])
-    && isset($db->settings['rotating_ads_open_new_tab']),
+    && isset($db->settings['rotating_ads_open_new_tab'])
+    && isset($db->settings['rotating_ads_enable_rotation'])
+    && isset($db->settings['rotating_ads_rotation_min_seconds'])
+    && isset($db->settings['rotating_ads_rotation_max_seconds']),
     'setting synchronization should create polish settings'
 );
 rotating_ads_test_assert(
@@ -319,6 +364,21 @@ rotating_ads_test_assert(
     'CSS loading should be removable when disabled'
 );
 
+$mybb->settings['rotating_ads_enable_css'] = '1';
+$mybb->settings['rotating_ads_enable_rotation'] = '1';
+$mybb->settings['rotating_ads_rotation_min_seconds'] = '4';
+$mybb->settings['rotating_ads_rotation_max_seconds'] = '8';
+$mybb->settings['rotating_ads_square_inventory'] = $rotating_ads_multi_inventory;
+rotating_ads_build_output();
+rotating_ads_test_assert(
+    strpos($rotating_ads_assets, '/jscripts/rotating-ads.js?ver=060') !== false
+    && strpos($rotating_ads_square, 'data-rotating-ads="1"') !== false
+    && strpos($rotating_ads_square, 'data-rotating-ads-min="4"') !== false
+    && strpos($rotating_ads_square, 'data-rotating-ads-max="8"') !== false,
+    'global output should add the rotation script and timing data when in-page rotation is enabled'
+);
+
+$mybb->settings['rotating_ads_enable_rotation'] = '0';
 $mybb->settings['rotating_ads_enable_css'] = '1';
 $mybb->settings['rotating_ads_hidden_groups'] = '4, 8';
 $mybb->user['usergroup'] = 2;
