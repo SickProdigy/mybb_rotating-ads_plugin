@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.2 - 2026-09-09
+
+- Fixed Admin CP inventory row editor script output by injecting it through MyBB's printed page header.
+
 ## 0.6.1 - 2026-09-09
 
 - Fixed Admin CP inventory row editor injection on the settings display page.

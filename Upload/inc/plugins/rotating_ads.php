@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.6.1',
+        'version' => '0.6.2',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -182,7 +182,7 @@ function rotating_ads_ensure_settings()
         array(
             'name' => 'rotating_ads_enable_rotation',
             'title' => rotating_ads_lang('rotating_ads_enable_rotation', 'Rotate ads while viewing a page'),
-            'description' => rotating_ads_lang('rotating_ads_enable_rotation_description', 'Cycle through enabled ads without requiring a page reload. Slots with fewer than two enabled ads keep the normal static output.'),
+            'description' => rotating_ads_lang('rotating_ads_enable_rotation_description', 'Cycle through enabled ads without requiring a page reload. Requires JavaScript; visitors without JavaScript keep the normal static output. Slots with fewer than two enabled ads also stay static.'),
             'optionscode' => 'yesno',
             'value' => '0',
             'disporder' => 7,
@@ -640,7 +640,7 @@ function rotating_ads_admin_settings_editor()
 }
 </style>';
 
-    $page->extra_footer .= '<script type="text/javascript">
+    $page->extra_header .= '<script type="text/javascript">
 window.rotatingAdsEditorLanguage = ' . $strings_json . ';
 (function(w, d) {
     "use strict";

@@ -63,7 +63,7 @@ Additional settings:
 - `Hide ads from usergroups`: Comma-separated primary or additional usergroup IDs that should not see ads.
 - `Load plugin CSS`: Disable if your theme provides its own ad styling.
 - `Open ads in a new tab`: Controls whether links include `target="_blank"`.
-- `Rotate ads while viewing a page`: Enables browser-side cycling when a slot has at least two enabled ads.
+- `Rotate ads while viewing a page`: Enables JavaScript-powered browser-side cycling when a slot has at least two enabled ads.
 - `Minimum rotation seconds` / `Maximum rotation seconds`: Controls the random delay range between ad changes. If maximum is below minimum, the plugin treats it as the minimum.
 
 ## Output
@@ -96,7 +96,7 @@ To hide both ad formats from VIP Gold or any other group, enter that group's ID 
 
 ## In-Page Rotation
 
-By default, the plugin chooses one random ad for each slot on each page request. Enable `Rotate ads while viewing a page` to let the browser cycle through all enabled ads in a populated slot. Visitors without JavaScript still see the initially rendered ad.
+By default, the plugin chooses one random ad for each slot on each page request. Enable `Rotate ads while viewing a page` to let JavaScript cycle through all enabled ads in a populated slot. Visitors without JavaScript still see the initially rendered ad.
 
 ## Uninstall
 
