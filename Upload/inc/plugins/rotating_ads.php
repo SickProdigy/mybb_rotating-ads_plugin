@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.6.2',
+        'version' => '0.6.3',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -554,6 +554,7 @@ function rotating_ads_remove_stylesheets()
 
 if (defined('IN_ADMINCP')) {
     $plugins->add_hook('admin_load', 'rotating_ads_admin_settings_editor');
+    $plugins->add_hook('admin_page_output_header', 'rotating_ads_admin_settings_editor');
     $plugins->add_hook('admin_config_settings_start', 'rotating_ads_admin_settings_editor');
     $plugins->add_hook('admin_style_themes_add_commit', 'rotating_ads_refresh_stylesheets');
     $plugins->add_hook('admin_style_themes_import_commit', 'rotating_ads_refresh_stylesheets');

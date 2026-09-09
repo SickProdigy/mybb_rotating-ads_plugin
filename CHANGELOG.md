@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3 - 2026-09-09
+
+- Moved Admin CP inventory row editor injection to MyBB's page header hook for reliable settings-page output.
+
 ## 0.6.2 - 2026-09-09
 
 - Fixed Admin CP inventory row editor script output by injecting it through MyBB's printed page header.

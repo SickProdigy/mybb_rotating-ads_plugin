@@ -1,6 +1,7 @@
 <?php
 
 define('IN_MYBB', 1);
+define('IN_ADMINCP', 1);
 define('MYBB_ROOT', __DIR__ . '/../');
 define('TIME_NOW', 1788912000);
 
@@ -244,10 +245,15 @@ rotating_ads_test_assert(
     isset($plugins->hooks['global_start']) && $plugins->hooks['global_start'] === 'rotating_ads_build_output',
     'plugin should register the global_start hook'
 );
+rotating_ads_test_assert(
+    isset($plugins->hooks['admin_page_output_header'])
+    && $plugins->hooks['admin_page_output_header'] === 'rotating_ads_admin_settings_editor',
+    'plugin should register the Admin CP header hook for settings editor assets'
+);
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.6.2',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.6.3',
     'plugin info should expose localized metadata and version'
 );
 
