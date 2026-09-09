@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1 - 2026-09-09
+
+- Fixed Admin CP inventory row editor injection on the settings display page.
+
 ## 0.6.0 - 2026-09-09
 
 - Added optional in-page ad rotation with configurable minimum and maximum timing.

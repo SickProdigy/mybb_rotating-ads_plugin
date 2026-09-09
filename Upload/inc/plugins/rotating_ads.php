@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.6.0',
+        'version' => '0.6.1',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -553,6 +553,8 @@ function rotating_ads_remove_stylesheets()
 }
 
 if (defined('IN_ADMINCP')) {
+    $plugins->add_hook('admin_load', 'rotating_ads_admin_settings_editor');
+    $plugins->add_hook('admin_config_settings_start', 'rotating_ads_admin_settings_editor');
     $plugins->add_hook('admin_style_themes_add_commit', 'rotating_ads_refresh_stylesheets');
     $plugins->add_hook('admin_style_themes_import_commit', 'rotating_ads_refresh_stylesheets');
     $plugins->add_hook('admin_style_themes_duplicate_commit', 'rotating_ads_refresh_stylesheets');
@@ -564,6 +566,12 @@ function rotating_ads_admin_settings_editor()
 {
     global $mybb, $page, $db;
 
+    static $injected = false;
+
+    if ($injected) {
+        return;
+    }
+
     if (!isset($page) || !isset($db)) {
         return;
     }
@@ -574,6 +582,8 @@ function rotating_ads_admin_settings_editor()
     if (empty($group['gid']) || (int)$mybb->get_input('gid') !== (int)$group['gid']) {
         return;
     }
+
+    $injected = true;
 
     $strings = rotating_ads_admin_editor_strings();
     $strings_json = json_encode($strings);
