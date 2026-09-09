@@ -1,10 +1,12 @@
 # Changelog
 
-## 1.0.0 - 2026-09-08
+## 0.5.0 - 2026-09-09
 
 - Added independently configurable square and banner advertisement inventories.
 - Added per-ad enabled flags with safe URL and text output.
-- Added theme-conscious default styling with an option to disable the plugin stylesheet.
 - Added configurable sponsor label and new-tab behavior.
+- Added a usergroup exemption setting for hiding ads from selected primary or additional groups.
+- Added an Admin CP row editor enhancement for square and banner ad inventories.
+- Moved maintained CSS into MyBB-managed theme stylesheets instead of a root `css/` asset.
 - Added language files for plugin metadata and Admin CP settings.
 - Added release packaging layout, tests, and GitHub/Gitea release workflows.

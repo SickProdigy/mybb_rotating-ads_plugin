@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '1.0.0',
+        'version' => '0.5.0',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -50,6 +50,8 @@ function rotating_ads_uninstall()
 {
     global $db;
 
+    rotating_ads_remove_stylesheets();
+
     $query = $db->simple_select('settinggroups', 'gid', "name='rotating_ads'");
     $group = $db->fetch_array($query);
 
@@ -64,6 +66,7 @@ function rotating_ads_uninstall()
 function rotating_ads_activate()
 {
     rotating_ads_ensure_settings();
+    rotating_ads_refresh_stylesheets();
 
     require_once MYBB_ROOT . 'inc/adminfunctions_templates.php';
 
@@ -72,15 +75,12 @@ function rotating_ads_activate()
         '#' . preg_quote('{$rotating_ads_assets}') . '#i',
         ''
     );
-    find_replace_templatesets(
-        'headerinclude',
-        '#' . preg_quote('{$stylesheets}') . '#i',
-        '{$stylesheets}{$rotating_ads_assets}'
-    );
 }
 
 function rotating_ads_deactivate()
 {
+    rotating_ads_remove_stylesheets();
+
     require_once MYBB_ROOT . 'inc/adminfunctions_templates.php';
 
     find_replace_templatesets(
@@ -148,12 +148,21 @@ function rotating_ads_ensure_settings()
             'gid' => $gid
         ),
         array(
+            'name' => 'rotating_ads_hidden_groups',
+            'title' => rotating_ads_lang('rotating_ads_hidden_groups', 'Hide ads from usergroups'),
+            'description' => rotating_ads_lang('rotating_ads_hidden_groups_description', 'Comma-separated primary or additional usergroup IDs that should not see rotating ads. Leave blank to show ads to all groups.'),
+            'optionscode' => 'text',
+            'value' => '',
+            'disporder' => 4,
+            'gid' => $gid
+        ),
+        array(
             'name' => 'rotating_ads_enable_css',
             'title' => rotating_ads_lang('rotating_ads_enable_css', 'Load plugin CSS'),
             'description' => rotating_ads_lang('rotating_ads_enable_css_description', 'Load the small default stylesheet. Disable this if your theme provides its own ad styling.'),
             'optionscode' => 'yesno',
             'value' => '1',
-            'disporder' => 4,
+            'disporder' => 5,
             'gid' => $gid
         ),
         array(
@@ -162,7 +171,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_open_new_tab_description', 'Open advertisement links in a new browser tab.'),
             'optionscode' => 'yesno',
             'value' => '1',
-            'disporder' => 5,
+            'disporder' => 6,
             'gid' => $gid
         )
     );
@@ -188,11 +197,11 @@ function rotating_ads_build_output()
     global $mybb, $rotating_ads_assets, $rotating_ads_square, $rotating_ads_banner;
 
     $rotating_ads_assets = '';
-    if (rotating_ads_setting_enabled('rotating_ads_enable_css', true)) {
-        $asset_base = isset($mybb->asset_url) && $mybb->asset_url !== '' ? $mybb->asset_url : $mybb->settings['bburl'];
-        $asset_url = rtrim($asset_base, '/');
-        $style_url = $asset_url . '/css/rotating-ads.css?ver=100';
-        $rotating_ads_assets = '<link rel="stylesheet" href="' . htmlspecialchars_uni($style_url) . '" />';
+    $rotating_ads_square = '';
+    $rotating_ads_banner = '';
+
+    if (rotating_ads_current_user_hidden()) {
+        return;
     }
 
     $square_ads = rotating_ads_parse_inventory(isset($mybb->settings['rotating_ads_square_inventory'])
@@ -271,6 +280,475 @@ function rotating_ads_setting_enabled($name, $default = true)
     }
 
     return (string)$mybb->settings[$name] !== '0';
+}
+
+function rotating_ads_stylesheet()
+{
+    return <<<'CSS'
+.rotating-ad {
+    margin: 0 0 20px;
+    overflow: hidden;
+    border: 1px solid rgba(127, 127, 127, 0.35);
+    background: transparent;
+}
+
+.rotating-ad__title {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.rotating-ad__link,
+.rotating-ad__image {
+    display: block;
+}
+
+.rotating-ad__image {
+    width: 100%;
+    height: auto;
+}
+
+.rotating-ad--square {
+    max-width: 320px;
+}
+
+.rotating-ad--banner {
+    width: 100%;
+}
+CSS;
+}
+
+function rotating_ads_load_theme_functions()
+{
+    global $config;
+
+    if (function_exists('cache_stylesheet') && function_exists('update_theme_stylesheet_list')) {
+        return true;
+    }
+
+    $candidates = array();
+
+    if (!empty($_SERVER['SCRIPT_FILENAME'])) {
+        $candidates[] = dirname($_SERVER['SCRIPT_FILENAME']) . '/inc/functions_themes.php';
+    }
+
+    if (!empty($config['admin_dir'])) {
+        $candidates[] = MYBB_ROOT . trim($config['admin_dir'], '/\\') . '/inc/functions_themes.php';
+    }
+
+    $candidates[] = MYBB_ROOT . 'admin/inc/functions_themes.php';
+
+    foreach (array_unique($candidates) as $functions_file) {
+        if (file_exists($functions_file)) {
+            require_once $functions_file;
+            break;
+        }
+    }
+
+    return function_exists('cache_stylesheet') && function_exists('update_theme_stylesheet_list');
+}
+
+function rotating_ads_refresh_stylesheets()
+{
+    if (rotating_ads_setting_enabled('rotating_ads_enable_css', true)) {
+        return rotating_ads_sync_stylesheets();
+    }
+
+    return rotating_ads_remove_stylesheets();
+}
+
+function rotating_ads_sync_stylesheets()
+{
+    global $db;
+
+    if (!rotating_ads_load_theme_functions()) {
+        return false;
+    }
+
+    $name = 'rotating_ads_plugin.css';
+    $stylesheet = rotating_ads_stylesheet();
+    $theme_ids = array();
+    $query = $db->simple_select('themes', 'tid', 'tid > 1');
+
+    while ($theme = $db->fetch_array($query)) {
+        $tid = (int)$theme['tid'];
+        $theme_ids[$tid] = $tid;
+        $existing_query = $db->simple_select(
+            'themestylesheets',
+            'sid',
+            "tid='{$tid}' AND name='" . $db->escape_string($name) . "'",
+            array('limit' => 1)
+        );
+        $existing = $db->fetch_array($existing_query);
+        $stylesheet_data = array(
+            'name' => $db->escape_string($name),
+            'tid' => $tid,
+            'attachedto' => '',
+            'stylesheet' => $db->escape_string($stylesheet),
+            'cachefile' => $db->escape_string($name),
+            'lastmodified' => TIME_NOW
+        );
+
+        if (!empty($existing['sid'])) {
+            $sid = (int)$existing['sid'];
+            $db->update_query('themestylesheets', $stylesheet_data, "sid='{$sid}'", 1);
+        } else {
+            $sid = (int)$db->insert_query('themestylesheets', $stylesheet_data);
+        }
+
+        if (!cache_stylesheet($tid, $name, $stylesheet)) {
+            $db->update_query(
+                'themestylesheets',
+                array('cachefile' => "css.php?stylesheet={$sid}"),
+                "sid='{$sid}'",
+                1
+            );
+        }
+    }
+
+    foreach ($theme_ids as $tid) {
+        update_theme_stylesheet_list($tid);
+    }
+
+    return true;
+}
+
+function rotating_ads_remove_stylesheets()
+{
+    global $db;
+
+    if (!rotating_ads_load_theme_functions()) {
+        return false;
+    }
+
+    $name = 'rotating_ads_plugin.css';
+    $theme_ids = array();
+    $query = $db->simple_select(
+        'themestylesheets',
+        'sid, tid, cachefile',
+        "name='" . $db->escape_string($name) . "'"
+    );
+
+    while ($stylesheet = $db->fetch_array($query)) {
+        $sid = (int)$stylesheet['sid'];
+        $tid = (int)$stylesheet['tid'];
+        $cachefile = basename($stylesheet['cachefile']);
+        $theme_ids[$tid] = $tid;
+        $db->delete_query('themestylesheets', "sid='{$sid}'", 1);
+
+        if ($cachefile !== '' && strpos($cachefile, 'css.php') === false) {
+            @unlink(MYBB_ROOT . "cache/themes/theme{$tid}/{$cachefile}");
+            @unlink(MYBB_ROOT . 'cache/themes/theme' . $tid . '/' . str_replace('.css', '.min.css', $cachefile));
+            @unlink(MYBB_ROOT . "cache/themes/{$tid}_{$cachefile}");
+            @unlink(MYBB_ROOT . 'cache/themes/' . $tid . '_' . str_replace('.css', '.min.css', $cachefile));
+        }
+    }
+
+    foreach ($theme_ids as $tid) {
+        update_theme_stylesheet_list($tid);
+    }
+
+    return true;
+}
+
+if (defined('IN_ADMINCP')) {
+    $plugins->add_hook('admin_style_themes_add_commit', 'rotating_ads_refresh_stylesheets');
+    $plugins->add_hook('admin_style_themes_import_commit', 'rotating_ads_refresh_stylesheets');
+    $plugins->add_hook('admin_style_themes_duplicate_commit', 'rotating_ads_refresh_stylesheets');
+    $plugins->add_hook('admin_config_settings_change', 'rotating_ads_refresh_stylesheets');
+    $plugins->add_hook('admin_config_settings_change', 'rotating_ads_admin_settings_editor');
+}
+
+function rotating_ads_admin_settings_editor()
+{
+    global $mybb, $page, $db;
+
+    if (!isset($page) || !isset($db)) {
+        return;
+    }
+
+    $query = $db->simple_select('settinggroups', 'gid', "name='rotating_ads'", array('limit' => 1));
+    $group = $db->fetch_array($query);
+
+    if (empty($group['gid']) || (int)$mybb->get_input('gid') !== (int)$group['gid']) {
+        return;
+    }
+
+    $strings = rotating_ads_admin_editor_strings();
+    $strings_json = json_encode($strings);
+    if ($strings_json === false) {
+        $strings_json = '{}';
+    }
+    $strings_json = str_replace(array('<', '>', '&'), array('\u003C', '\u003E', '\u0026'), $strings_json);
+
+    $page->extra_header .= '<style type="text/css">
+.rotating-ads-editor {
+    max-width: 980px;
+    margin-top: 8px;
+}
+
+.rotating-ads-editor__table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #ccc;
+    background: #fff;
+}
+
+.rotating-ads-editor__table th,
+.rotating-ads-editor__table td {
+    padding: 7px;
+    border: 1px solid #ddd;
+    vertical-align: top;
+}
+
+.rotating-ads-editor__table th {
+    background: #f5f5f5;
+    text-align: left;
+}
+
+.rotating-ads-editor__table input[type="text"] {
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.rotating-ads-editor__enabled {
+    text-align: center;
+    white-space: nowrap;
+}
+
+.rotating-ads-editor__actions {
+    margin-top: 8px;
+}
+
+.rotating-ads-editor__fallback {
+    margin-top: 8px;
+}
+
+.rotating-ads-editor--enhanced .rotating-ads-editor__fallback {
+    display: none;
+}
+</style>';
+
+    $page->extra_footer .= '<script type="text/javascript">
+window.rotatingAdsEditorLanguage = ' . $strings_json . ';
+(function(w, d) {
+    "use strict";
+
+    var language = w.rotatingAdsEditorLanguage || {};
+    var fields = [
+        {name: "rotating_ads_square_inventory", label: language.squareAds || "Square Ads"},
+        {name: "rotating_ads_banner_inventory", label: language.bannerAds || "Banner Ads"}
+    ];
+
+    function text(key, fallback) {
+        return language[key] || fallback;
+    }
+
+    function escapeSelector(value) {
+        if (w.CSS && typeof w.CSS.escape === "function") {
+            return w.CSS.escape(value);
+        }
+
+        return value.replace(/"/g, "\\\"");
+    }
+
+    function findField(name) {
+        return d.querySelector("textarea[name=\"upsetting[" + escapeSelector(name) + "]\"]");
+    }
+
+    function parseRows(value) {
+        var rows = [];
+        var lines = String(value || "").split(/\r\n|\r|\n/);
+
+        lines.forEach(function(line) {
+            line = line.trim();
+            if (!line || line.charAt(0) === "#") {
+                return;
+            }
+
+            var parts = line.split("|");
+            rows.push({
+                image: (parts.shift() || "").trim(),
+                url: (parts.shift() || "").trim(),
+                alt: parts.length > 1 ? parts.slice(0, -1).join("|").trim() : (parts.shift() || "").trim(),
+                enabled: parts.length ? parts.pop().trim() !== "0" : true
+            });
+        });
+
+        return rows;
+    }
+
+    function serializeRows(editor) {
+        var lines = [];
+        editor.querySelectorAll("tbody tr").forEach(function(row) {
+            var image = row.querySelector("[data-ad-field=\"image\"]").value.trim();
+            var url = row.querySelector("[data-ad-field=\"url\"]").value.trim();
+            var alt = row.querySelector("[data-ad-field=\"alt\"]").value.trim().replace(/\|/g, "/");
+            var enabled = row.querySelector("[data-ad-field=\"enabled\"]").checked ? "1" : "0";
+
+            if (image || url || alt) {
+                lines.push([image, url, alt, enabled].join("|"));
+            }
+        });
+
+        return lines.join("\n");
+    }
+
+    function makeInput(field, value) {
+        var input = d.createElement("input");
+        input.type = "text";
+        input.value = value || "";
+        input.setAttribute("data-ad-field", field);
+        return input;
+    }
+
+    function addRow(editor, data) {
+        var tbody = editor.querySelector("tbody");
+        var row = d.createElement("tr");
+        data = data || {};
+
+        ["image", "url", "alt"].forEach(function(field) {
+            var cell = d.createElement("td");
+            cell.appendChild(makeInput(field, data[field]));
+            row.appendChild(cell);
+        });
+
+        var enabledCell = d.createElement("td");
+        enabledCell.className = "rotating-ads-editor__enabled";
+        var enabled = d.createElement("input");
+        enabled.type = "checkbox";
+        enabled.checked = data.enabled !== false;
+        enabled.setAttribute("data-ad-field", "enabled");
+        enabledCell.appendChild(enabled);
+        row.appendChild(enabledCell);
+
+        var actionCell = d.createElement("td");
+        var remove = d.createElement("button");
+        remove.type = "button";
+        remove.className = "button";
+        remove.textContent = text("remove", "Remove");
+        remove.addEventListener("click", function() {
+            row.parentNode.removeChild(row);
+        });
+        actionCell.appendChild(remove);
+        row.appendChild(actionCell);
+
+        tbody.appendChild(row);
+    }
+
+    function buildEditor(textarea, config) {
+        var wrapper = d.createElement("div");
+        wrapper.className = "rotating-ads-editor rotating-ads-editor--enhanced";
+        wrapper.innerHTML =
+            "<table class=\"rotating-ads-editor__table\">" +
+            "<thead><tr>" +
+            "<th>" + text("imageUrl", "Image URL") + "</th>" +
+            "<th>" + text("destinationUrl", "Destination URL") + "</th>" +
+            "<th>" + text("altText", "Alt text") + "</th>" +
+            "<th>" + text("enabled", "Enabled") + "</th>" +
+            "<th>" + text("actions", "Actions") + "</th>" +
+            "</tr></thead><tbody></tbody></table>" +
+            "<div class=\"rotating-ads-editor__actions\"></div>" +
+            "<div class=\"rotating-ads-editor__fallback\"></div>";
+
+        var actions = wrapper.querySelector(".rotating-ads-editor__actions");
+        var add = d.createElement("button");
+        add.type = "button";
+        add.className = "button";
+        add.textContent = text("addAd", "Add ad");
+        add.addEventListener("click", function() {
+            addRow(wrapper, {});
+        });
+        actions.appendChild(add);
+
+        parseRows(textarea.value).forEach(function(row) {
+            addRow(wrapper, row);
+        });
+
+        if (!wrapper.querySelector("tbody tr")) {
+            addRow(wrapper, {});
+        }
+
+        textarea.parentNode.insertBefore(wrapper, textarea);
+        wrapper.querySelector(".rotating-ads-editor__fallback").appendChild(textarea);
+
+        var form = textarea.form;
+        if (form) {
+            form.addEventListener("submit", function() {
+                textarea.value = serializeRows(wrapper);
+            });
+        }
+    }
+
+    d.addEventListener("DOMContentLoaded", function() {
+        fields.forEach(function(config) {
+            var textarea = findField(config.name);
+            if (textarea) {
+                buildEditor(textarea, config);
+            }
+        });
+    });
+}(window, document));
+</script>';
+}
+
+function rotating_ads_admin_editor_strings()
+{
+    return array(
+        'squareAds' => rotating_ads_lang('rotating_ads_square_inventory', 'Square Ads'),
+        'bannerAds' => rotating_ads_lang('rotating_ads_banner_inventory', 'Banner Ads'),
+        'imageUrl' => rotating_ads_lang('rotating_ads_editor_image_url', 'Image URL'),
+        'destinationUrl' => rotating_ads_lang('rotating_ads_editor_destination_url', 'Destination URL'),
+        'altText' => rotating_ads_lang('rotating_ads_editor_alt_text', 'Alt text'),
+        'enabled' => rotating_ads_lang('rotating_ads_editor_enabled', 'Enabled'),
+        'actions' => rotating_ads_lang('rotating_ads_editor_actions', 'Actions'),
+        'addAd' => rotating_ads_lang('rotating_ads_editor_add_ad', 'Add ad'),
+        'remove' => rotating_ads_lang('rotating_ads_editor_remove', 'Remove')
+    );
+}
+
+function rotating_ads_current_user_hidden()
+{
+    global $mybb;
+
+    $hidden_groups = rotating_ads_parse_id_list(isset($mybb->settings['rotating_ads_hidden_groups'])
+        ? $mybb->settings['rotating_ads_hidden_groups']
+        : '');
+
+    if (empty($hidden_groups)) {
+        return false;
+    }
+
+    $user = isset($mybb->user) && is_array($mybb->user) ? $mybb->user : array();
+    $user_groups = rotating_ads_parse_id_list(isset($user['additionalgroups']) ? $user['additionalgroups'] : '');
+
+    if (!empty($user['usergroup'])) {
+        $user_groups[] = (int)$user['usergroup'];
+    }
+
+    return (bool)array_intersect(array_unique($user_groups), $hidden_groups);
+}
+
+function rotating_ads_parse_id_list($value)
+{
+    $ids = array();
+    $parts = preg_split('/[,\s]+/', (string)$value);
+
+    foreach ($parts as $part) {
+        if (!ctype_digit($part)) {
+            continue;
+        }
+
+        $id = (int)$part;
+
+        if ($id > 0) {
+            $ids[] = $id;
+        }
+    }
+
+    return array_values(array_unique($ids));
 }
 
 function rotating_ads_lang($key, $fallback)

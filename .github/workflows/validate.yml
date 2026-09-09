@@ -69,7 +69,6 @@ jobs:
             Upload/inc/plugins/rotating_ads.php
             Upload/inc/languages/english/admin/rotating_ads.lang.php
             Upload/inc/languages/english/rotating_ads.lang.php
-            Upload/css/rotating-ads.css
             README.md
             LICENSE
             CHANGELOG.md

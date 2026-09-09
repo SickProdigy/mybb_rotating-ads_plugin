@@ -20,12 +20,11 @@ Copy the contents of `Upload/` into the MyBB installation root:
 Upload/inc/plugins/rotating_ads.php -> public_html/inc/plugins/rotating_ads.php
 Upload/inc/languages/english/rotating_ads.lang.php -> public_html/inc/languages/english/rotating_ads.lang.php
 Upload/inc/languages/english/admin/rotating_ads.lang.php -> public_html/inc/languages/english/admin/rotating_ads.lang.php
-Upload/css/rotating-ads.css -> public_html/css/rotating-ads.css
 ```
 
 Then install and activate `Rotating Ads` under Admin CP → Configuration → Plugins.
 
-Activation inserts `{$rotating_ads_assets}` after `{$stylesheets}` in `headerinclude`. Deactivation removes it.
+Activation adds the maintained plugin stylesheet to each theme through MyBB's stylesheet manager. Deactivation removes it.
 
 ## Template Variables
 
@@ -42,7 +41,7 @@ The plugin does not impose either slot on a theme. Administrators place `{$rotat
 
 ## Configuration
 
-The plugin creates separate `Square Ads` and `Banner Ads` settings. Fresh installs start with both inventories blank so the package does not ship a site-specific advertisement. Enter one ad per line:
+The plugin creates separate `Square Ads` and `Banner Ads` settings. Fresh installs start with both inventories blank so the package does not ship a site-specific advertisement. Admin CP displays these as editable rows. Without JavaScript, the settings fall back to one ad per line:
 
 ```text
 image URL|destination URL|alt text|enabled
@@ -59,6 +58,7 @@ Set enabled to `1` or `0`. Blank lines and lines beginning with `#` are ignored.
 Additional settings:
 
 - `Sponsor label`: Optional text displayed above each ad. Leave blank to hide it.
+- `Hide ads from usergroups`: Comma-separated primary or additional usergroup IDs that should not see ads.
 - `Load plugin CSS`: Disable if your theme provides its own ad styling.
 - `Open ads in a new tab`: Controls whether links include `target="_blank"`.
 
@@ -69,7 +69,7 @@ Each selected advertisement uses plugin-owned markup and styling:
 ```html
 <aside class="rotating-ad rotating-ad--square">
     <div class="rotating-ad__title">Sponsored</div>
-    <a class="rotating-ad__link" rel="sponsored noopener">
+    <a class="rotating-ad__link" rel="sponsored noopener noreferrer">
         <img class="rotating-ad__image" />
     </a>
 </aside>
@@ -86,21 +86,13 @@ php -l Upload/inc/plugins/rotating_ads.php
 php tests/rotating_ads_test.php
 ```
 
-## Planned VIP Gold Preference
+## Usergroup Exemptions
 
-Gitea issue #1 tracks a User CP preference allowing eligible VIP Gold members to hide both ad formats. That preference is not implemented in version 1.0.0.
-
-## Manual Asset Integration
-
-If a customized `headerinclude` lacks `{$stylesheets}`, add this variable manually:
-
-```html
-{$rotating_ads_assets}
-```
+To hide both ad formats from VIP Gold or any other group, enter that group's ID in `Hide ads from usergroups`. Primary and additional usergroups are checked.
 
 ## Uninstall
 
-Uninstalling removes the Rotating Ads settings. MyBB deactivates the plugin first, removing its asset insertion.
+Uninstalling removes the Rotating Ads settings. MyBB deactivates the plugin first, removing its maintained stylesheet.
 
 ## License
 

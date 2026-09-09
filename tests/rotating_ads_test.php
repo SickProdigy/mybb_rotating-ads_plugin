@@ -2,6 +2,7 @@
 
 define('IN_MYBB', 1);
 define('MYBB_ROOT', __DIR__ . '/../');
+define('TIME_NOW', 1788912000);
 
 function rotating_ads_test_assert($condition, $message)
 {
@@ -23,11 +24,21 @@ class RotatingAdsTestPlugins
 
 class RotatingAdsTestQuery
 {
-    public $row;
+    public $rows;
+    private $position = 0;
 
-    public function __construct($row)
+    public function __construct($rows)
     {
-        $this->row = $row;
+        $this->rows = isset($rows[0]) ? array_values($rows) : array($rows);
+    }
+
+    public function next()
+    {
+        if (!isset($this->rows[$this->position])) {
+            return array();
+        }
+
+        return $this->rows[$this->position++];
     }
 }
 
@@ -35,7 +46,13 @@ class RotatingAdsTestDatabase
 {
     public $group = array();
     public $settings = array();
+    public $themes = array(
+        array('tid' => 2),
+        array('tid' => 3),
+    );
+    public $stylesheets = array();
     private $next_setting_id = 1;
+    private $next_stylesheet_id = 1;
 
     public function simple_select($table, $fields, $where, $options = array())
     {
@@ -43,15 +60,39 @@ class RotatingAdsTestDatabase
             return new RotatingAdsTestQuery($this->group);
         }
 
-        preg_match("/name='([^']+)'/", $where, $matches);
-        $name = isset($matches[1]) ? stripslashes($matches[1]) : '';
+        if ($table === 'settings') {
+            preg_match("/name='([^']+)'/", $where, $matches);
+            $name = isset($matches[1]) ? stripslashes($matches[1]) : '';
 
-        return new RotatingAdsTestQuery(isset($this->settings[$name]) ? $this->settings[$name] : array());
+            return new RotatingAdsTestQuery(isset($this->settings[$name]) ? $this->settings[$name] : array());
+        }
+
+        if ($table === 'themes') {
+            return new RotatingAdsTestQuery($this->themes);
+        }
+
+        if ($table === 'themestylesheets') {
+            preg_match("/name='([^']+)'/", $where, $name_matches);
+            preg_match("/tid='([0-9]+)'/", $where, $tid_matches);
+            $name = isset($name_matches[1]) ? stripslashes($name_matches[1]) : '';
+            $tid = isset($tid_matches[1]) ? (int)$tid_matches[1] : 0;
+            $rows = array();
+
+            foreach ($this->stylesheets as $stylesheet) {
+                if ($stylesheet['name'] === $name && (!$tid || (int)$stylesheet['tid'] === $tid)) {
+                    $rows[] = $stylesheet;
+                }
+            }
+
+            return new RotatingAdsTestQuery($rows);
+        }
+
+        return new RotatingAdsTestQuery(array());
     }
 
     public function fetch_array($query)
     {
-        return $query->row;
+        return $query->next();
     }
 
     public function insert_query($table, $values)
@@ -60,6 +101,13 @@ class RotatingAdsTestDatabase
             $values['gid'] = 12;
             $this->group = $values;
             return 12;
+        }
+
+        if ($table === 'themestylesheets') {
+            $values['sid'] = $this->next_stylesheet_id++;
+            $this->stylesheets[$values['sid']] = $values;
+
+            return $values['sid'];
         }
 
         $values['sid'] = $this->next_setting_id++;
@@ -72,6 +120,17 @@ class RotatingAdsTestDatabase
     {
         if ($table === 'settinggroups') {
             $this->group = array_merge($this->group, $values);
+            return;
+        }
+
+        if ($table === 'themestylesheets') {
+            preg_match("/sid='([0-9]+)'/", $where, $matches);
+            $sid = isset($matches[1]) ? (int)$matches[1] : 0;
+
+            if (isset($this->stylesheets[$sid])) {
+                $this->stylesheets[$sid] = array_merge($this->stylesheets[$sid], $values);
+            }
+
             return;
         }
 
@@ -95,6 +154,12 @@ class RotatingAdsTestDatabase
         if ($table === 'settings') {
             $this->settings = array();
         }
+
+        if ($table === 'themestylesheets') {
+            preg_match("/sid='([0-9]+)'/", $where, $matches);
+            $sid = isset($matches[1]) ? (int)$matches[1] : 0;
+            unset($this->stylesheets[$sid]);
+        }
     }
 
     public function escape_string($value)
@@ -114,6 +179,8 @@ class RotatingAdsTestLang
     public $rotating_ads_sponsor_label = 'Sponsor label';
     public $rotating_ads_sponsor_label_description = 'Sponsor label description';
     public $rotating_ads_default_sponsor_label = 'Sponsored';
+    public $rotating_ads_hidden_groups = 'Hide ads from usergroups';
+    public $rotating_ads_hidden_groups_description = 'Hidden groups description';
     public $rotating_ads_enable_css = 'Load plugin CSS';
     public $rotating_ads_enable_css_description = 'CSS description';
     public $rotating_ads_open_new_tab = 'Open ads in a new tab';
@@ -133,6 +200,15 @@ function rebuild_settings()
 {
 }
 
+function cache_stylesheet($tid, $name, $stylesheet)
+{
+    return true;
+}
+
+function update_theme_stylesheet_list($tid)
+{
+}
+
 $plugins = new RotatingAdsTestPlugins();
 $db = new RotatingAdsTestDatabase();
 $lang = new RotatingAdsTestLang();
@@ -143,8 +219,13 @@ $mybb = (object)array(
         'rotating_ads_square_inventory' => '',
         'rotating_ads_banner_inventory' => '',
         'rotating_ads_sponsor_label' => 'Sponsored',
+        'rotating_ads_hidden_groups' => '',
         'rotating_ads_enable_css' => '1',
         'rotating_ads_open_new_tab' => '1',
+    ),
+    'user' => array(
+        'usergroup' => 2,
+        'additionalgroups' => '',
     ),
 );
 
@@ -157,7 +238,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '1.0.0',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.5.0',
     'plugin info should expose localized metadata and version'
 );
 
@@ -189,9 +270,15 @@ rotating_ads_test_assert(
     'rendered ad should support hidden labels and same-tab links'
 );
 
+rotating_ads_test_assert(
+    rotating_ads_parse_id_list('4, 8 8 bad 0') === array(4, 8),
+    'ID list parser should keep unique positive numeric IDs'
+);
+
 rotating_ads_ensure_settings();
 rotating_ads_test_assert(
     isset($db->settings['rotating_ads_sponsor_label'])
+    && isset($db->settings['rotating_ads_hidden_groups'])
     && isset($db->settings['rotating_ads_enable_css'])
     && isset($db->settings['rotating_ads_open_new_tab']),
     'setting synchronization should create polish settings'
@@ -211,17 +298,57 @@ rotating_ads_test_assert(
 $mybb->settings['rotating_ads_square_inventory'] = 'https://example.com/ad.jpg|https://example.com/|Example|1';
 rotating_ads_build_output();
 rotating_ads_test_assert(
-    strpos($rotating_ads_assets, 'https://static.example.com/css/rotating-ads.css?ver=100') !== false
+    $rotating_ads_assets === ''
     && strpos($rotating_ads_square, 'rotating-ad--square') !== false
     && $rotating_ads_banner === '',
-    'global output should build assets and populated slots'
+    'global output should build populated slots without legacy link assets'
+);
+
+rotating_ads_refresh_stylesheets();
+rotating_ads_test_assert(
+    count($db->stylesheets) === 2
+    && isset($db->stylesheets[1]['stylesheet'])
+    && strpos($db->stylesheets[1]['stylesheet'], '.rotating-ad') !== false,
+    'CSS loading should sync maintained stylesheets into MyBB themes'
 );
 
 $mybb->settings['rotating_ads_enable_css'] = '0';
+rotating_ads_refresh_stylesheets();
+rotating_ads_test_assert(
+    count($db->stylesheets) === 0,
+    'CSS loading should be removable when disabled'
+);
+
+$mybb->settings['rotating_ads_enable_css'] = '1';
+$mybb->settings['rotating_ads_hidden_groups'] = '4, 8';
+$mybb->user['usergroup'] = 2;
+$mybb->user['additionalgroups'] = '8';
 rotating_ads_build_output();
 rotating_ads_test_assert(
-    $rotating_ads_assets === '',
-    'CSS loading should be configurable'
+    $rotating_ads_assets === ''
+    && $rotating_ads_square === ''
+    && $rotating_ads_banner === '',
+    'hidden primary or additional usergroups should not receive assets or ads'
+);
+
+$mybb->settings['rotating_ads_hidden_groups'] = '4, 8';
+$mybb->user['usergroup'] = 4;
+$mybb->user['additionalgroups'] = '';
+rotating_ads_build_output();
+rotating_ads_test_assert(
+    $rotating_ads_assets === ''
+    && $rotating_ads_square === ''
+    && $rotating_ads_banner === '',
+    'hidden primary usergroups should not receive assets or ads'
+);
+
+$mybb->user['usergroup'] = 2;
+$mybb->user['additionalgroups'] = '';
+rotating_ads_build_output();
+rotating_ads_test_assert(
+    $rotating_ads_assets === ''
+    && strpos($rotating_ads_square, 'rotating-ad--square') !== false,
+    'users outside hidden groups should still receive ads without legacy link assets'
 );
 
 echo "Rotating Ads tests passed.\n";
