@@ -391,7 +391,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.0',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.1',
     'plugin info should expose localized metadata and version'
 );
 rotating_ads_test_assert(
@@ -406,7 +406,29 @@ $inventory = "https://example.com/ad.jpg|https://example.com/|Example <Ad>|1\n"
 $ads = rotating_ads_parse_inventory($inventory);
 rotating_ads_test_assert(
     count($ads) === 1 && $ads[0]['alt_text'] === 'Example <Ad>',
-    'inventory parser should keep only enabled HTTP(S) ads'
+    'inventory parser should keep only enabled supported ads'
+);
+rotating_ads_test_assert(
+    rotating_ads_valid_url('/images/sponsored/ad-hostpro.jpg')
+    && rotating_ads_valid_url('https://cdn.example.com/ad.jpg')
+    && !rotating_ads_valid_url('//cdn.example.com/ad.jpg')
+    && !rotating_ads_valid_url('/images\\ad.jpg')
+    && !rotating_ads_valid_url('javascript:alert(1)'),
+    'URL validation should allow safe site-relative paths without allowing protocol-relative or unsafe URLs'
+);
+
+$local_ad = array(array(
+    'aid' => 99,
+    'image_url' => '/images/sponsored/ad-hostpro.jpg',
+    'destination_url' => '/sponsors.php',
+    'alt_text' => 'Local sponsor',
+    'weight' => 1
+));
+$local_rendered = rotating_ads_render_slot('square', $local_ad, 'Sponsored', false);
+rotating_ads_test_assert(
+    strpos($local_rendered, 'action=rotating_ads_click&amp;aid=99') !== false
+    && strpos($local_rendered, 'action=rotating_ads_image&amp;aid=99') !== false,
+    'site-relative ads should retain click and impression tracking'
 );
 
 $rendered = rotating_ads_render_slot('square', $ads, 'Ad & Sponsor', true);

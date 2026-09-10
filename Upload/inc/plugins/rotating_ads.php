@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.8.0',
+        'version' => '0.8.1',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -385,7 +385,7 @@ function rotating_ads_track_request()
     $ad = $db->fetch_array($query);
     $target_field = $action === 'rotating_ads_click' ? 'destination_url' : 'image_url';
 
-    if (empty($ad['aid']) || !rotating_ads_valid_http_url($ad[$target_field])) {
+    if (empty($ad['aid']) || !rotating_ads_valid_url($ad[$target_field])) {
         error(rotating_ads_lang('rotating_ads_not_found', 'The selected ad could not be found.'));
     }
 
@@ -470,7 +470,7 @@ function rotating_ads_get_ads($slot)
             return rotating_ads_get_ads($slot);
         }
 
-        if (!rotating_ads_valid_http_url($ad['image_url']) || !rotating_ads_valid_http_url($ad['destination_url'])) {
+        if (!rotating_ads_valid_url($ad['image_url']) || !rotating_ads_valid_url($ad['destination_url'])) {
             continue;
         }
 
@@ -516,7 +516,7 @@ function rotating_ads_parse_inventory_records($value)
         $image_url = isset($parts[0]) ? $parts[0] : '';
         $destination_url = isset($parts[1]) ? $parts[1] : '';
 
-        if (!preg_match('#^https?://#i', $image_url) || !preg_match('#^https?://#i', $destination_url)) {
+        if (!rotating_ads_valid_url($image_url) || !rotating_ads_valid_url($destination_url)) {
             continue;
         }
 
@@ -552,9 +552,13 @@ function rotating_ads_prepare_ad_for_database($ad)
     );
 }
 
-function rotating_ads_valid_http_url($url)
+function rotating_ads_valid_url($url)
 {
     $url = trim((string)$url);
+    if (preg_match('#^/(?!/)#', $url) && strpos($url, "\\") === false && !preg_match('/[\x00-\x1F\x7F]/', $url)) {
+        return true;
+    }
+
     $scheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
 
     return ($scheme === 'http' || $scheme === 'https') && filter_var($url, FILTER_VALIDATE_URL) !== false;
@@ -1133,11 +1137,11 @@ function rotating_ads_admin_form($action, $aid = 0)
             'clicks' => $current_clicks
         );
 
-        if (!rotating_ads_valid_http_url($ad['image_url'])) {
-            $errors[] = rotating_ads_lang('rotating_ads_invalid_image_url', 'Enter a valid HTTP(S) image URL.');
+        if (!rotating_ads_valid_url($ad['image_url'])) {
+            $errors[] = rotating_ads_lang('rotating_ads_invalid_image_url', 'Enter an HTTP(S) image URL or a site-relative path beginning with /.');
         }
-        if (!rotating_ads_valid_http_url($ad['destination_url'])) {
-            $errors[] = rotating_ads_lang('rotating_ads_invalid_destination_url', 'Enter a valid HTTP(S) destination URL.');
+        if (!rotating_ads_valid_url($ad['destination_url'])) {
+            $errors[] = rotating_ads_lang('rotating_ads_invalid_destination_url', 'Enter an HTTP(S) destination URL or a site-relative path beginning with /.');
         }
         if (trim($mybb->get_input('start_date')) !== '' && !$ad['start_at']) {
             $errors[] = rotating_ads_lang('rotating_ads_invalid_start_date', 'Enter the start date as YYYY-MM-DD.');

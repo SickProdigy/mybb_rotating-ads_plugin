@@ -49,6 +49,8 @@ Manage individual ads in **Admin CP -> Configuration -> Rotating Ads**. Use **Ad
 
 Delivery weight is relative: ads with the default weight of `1` have equal odds, while an ad with weight `5` is selected five times as often as a weight-`1` ad in the same eligible pool. Start and end dates use UTC. Limits use `0` for unlimited delivery.
 
+Image and destination fields accept full HTTP(S) URLs or site-relative paths beginning with `/`. For example, an image stored beneath the forum installation can use `/images/sponsored/ad-hostpro.jpg` when the forum is installed at the site root.
+
 Country targeting reads the first valid country code supplied by `CF-IPCountry`, `GEOIP_COUNTRY_CODE`, or `X-AppEngine-Country`. An allowlist does not deliver when no country code is available; a blocklist does. The plugin does not call an external geolocation service.
 
 General display and timing options remain under **Configuration -> Settings -> Rotating Ads**.

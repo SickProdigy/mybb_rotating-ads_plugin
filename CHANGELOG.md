@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1 - 2026-09-10
+
+- Added support for site-relative image and destination paths such as `/images/sponsored/ad-hostpro.jpg`.
+- Kept protocol-relative external URLs rejected so local-path support cannot bypass the HTTP(S) validation policy.
+
 ## 0.8.0 - 2026-09-10
 
 - Added per-ad impression, click, and CTR totals with privacy-conscious tracked redirects.
