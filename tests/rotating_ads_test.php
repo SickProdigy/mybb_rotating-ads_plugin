@@ -365,7 +365,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.5',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '1.0.0',
     'plugin info should expose localized metadata and version'
 );
 rotating_ads_test_assert(

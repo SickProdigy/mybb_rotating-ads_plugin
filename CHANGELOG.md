@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0 - 2026-09-10
+
+- Marked the database-backed Rotating Ads manager as the initial stable release.
+- Includes square and banner slots, weighted rotation, campaign schedules and limits, country targeting, usergroup exclusions, tracked metrics, local asset paths, and native Admin CP controls.
+
 ## 0.8.5 - 2026-09-10
 
 - Changed campaign start and end fields to native date controls with clickable browser calendar pickers.

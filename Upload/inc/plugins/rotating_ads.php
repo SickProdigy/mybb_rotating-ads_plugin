@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.8.5',
+        'version' => '1.0.0',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
