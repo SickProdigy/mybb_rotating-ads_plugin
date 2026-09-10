@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.5 - 2026-09-10
+
+- Changed campaign start and end fields to native date controls with clickable browser calendar pickers.
+- Kept the existing UTC date parsing and server-side date-range validation without adding Admin CP JavaScript.
+
 ## 0.8.4 - 2026-09-10
 
 - Added a general setting to show or hide the readable destination hostname in tracked click URLs.

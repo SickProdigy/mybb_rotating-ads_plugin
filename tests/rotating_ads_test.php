@@ -365,7 +365,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.4',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.5',
     'plugin info should expose localized metadata and version'
 );
 rotating_ads_test_assert(
@@ -495,6 +495,11 @@ rotating_ads_test_assert(
     && rotating_ads_parse_admin_date('2026-09-10', true) === 1789084799
     && rotating_ads_parse_admin_date('2026-02-30') === 0,
     'campaign dates should parse strictly in UTC with inclusive end dates'
+);
+rotating_ads_test_assert(
+    rotating_ads_generate_date_field('start_date', 1788998400)
+        === '<input type="date" class="text_input" name="start_date" id="start_date" value="2026-09-10" />',
+    'campaign date fields should use the native calendar control with MyBB styling'
 );
 
 $mybb->settings['rotating_ads_enable_rotation'] = '1';

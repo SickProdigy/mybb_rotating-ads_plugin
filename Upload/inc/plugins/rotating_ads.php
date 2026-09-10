@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.8.4',
+        'version' => '0.8.5',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -1120,13 +1120,13 @@ function rotating_ads_admin_form($action, $aid = 0)
     $container->output_row(
         rotating_ads_lang('rotating_ads_start_date', 'Start date'),
         rotating_ads_lang('rotating_ads_start_date_description', 'Optional UTC date in YYYY-MM-DD format.'),
-        $form->generate_text_box('start_date', rotating_ads_format_admin_date($ad['start_at']), array('id' => 'start_date')),
+        rotating_ads_generate_date_field('start_date', $ad['start_at']),
         'start_date'
     );
     $container->output_row(
         rotating_ads_lang('rotating_ads_end_date', 'End date'),
         rotating_ads_lang('rotating_ads_end_date_description', 'Optional UTC date in YYYY-MM-DD format. The ad runs through the end of that day.'),
-        $form->generate_text_box('end_date', rotating_ads_format_admin_date($ad['end_at']), array('id' => 'end_date')),
+        rotating_ads_generate_date_field('end_date', $ad['end_at']),
         'end_date'
     );
     $container->output_row(
@@ -1194,6 +1194,14 @@ function rotating_ads_parse_admin_date($value, $end_of_day = false)
 function rotating_ads_format_admin_date($timestamp)
 {
     return !empty($timestamp) ? gmdate('Y-m-d', (int)$timestamp) : '';
+}
+
+function rotating_ads_generate_date_field($name, $timestamp)
+{
+    $name = htmlspecialchars_uni($name);
+    $value = htmlspecialchars_uni(rotating_ads_format_admin_date($timestamp));
+
+    return '<input type="date" class="text_input" name="' . $name . '" id="' . $name . '" value="' . $value . '" />';
 }
 
 function rotating_ads_admin_delivery_status($ad, $now = null)
