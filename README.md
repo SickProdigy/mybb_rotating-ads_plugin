@@ -7,7 +7,9 @@ Standalone square and banner advertisement rotation for MyBB 1.8.
 - Independent square and banner ad inventories.
 - Random server-side selection on each page request.
 - Optional in-page rotation with configurable timing.
-- Per-ad enabled flags.
+- Per-ad schedules, delivery weights, view/click limits, and enabled flags.
+- Per-ad impression, click, and click-through-rate totals.
+- Country allowlists and blocklists when a country header is available.
 - Theme-conscious responsive styling that can be disabled.
 - Configurable sponsor label and new-tab behavior.
 - Safe image, link, and alternative-text output.
@@ -43,7 +45,11 @@ The plugin does not impose either slot on a theme. Administrators place `{$rotat
 
 ## Configuration
 
-Manage individual ads in **Admin CP -> Configuration -> Rotating Ads**. Use **Add ad** to create a square or banner ad, then edit, disable, reorder, or delete it from the native MyBB management table. Existing pipe-delimited inventories from versions before 0.7.0 are imported when the plugin is activated.
+Manage individual ads in **Admin CP -> Configuration -> Rotating Ads**. Use **Add ad** to create a square or banner ad, then configure its weight, schedule, limits, country targeting, or status from the native MyBB management page. Existing pipe-delimited inventories from versions before 0.7.0 are imported when the plugin is activated.
+
+Delivery weight is relative: ads with the default weight of `1` have equal odds, while an ad with weight `5` is selected five times as often as a weight-`1` ad in the same eligible pool. Start and end dates use UTC. Limits use `0` for unlimited delivery.
+
+Country targeting reads the first valid country code supplied by `CF-IPCountry`, `GEOIP_COUNTRY_CODE`, or `X-AppEngine-Country`. An allowlist does not deliver when no country code is available; a blocklist does. The plugin does not call an external geolocation service.
 
 General display and timing options remain under **Configuration -> Settings -> Rotating Ads**.
 That page also displays the two supported template variables as read-only values; the plugin never inserts an ad slot into the index or another template automatically.
@@ -88,6 +94,10 @@ To hide both ad formats from VIP Gold or any other group, enter that group's ID 
 ## In-Page Rotation
 
 By default, the plugin chooses one random ad for each slot on each page request. Enable `Rotate ads while viewing a page` to let JavaScript cycle through all enabled ads in a populated slot. Visitors without JavaScript still see the initially rendered ad.
+
+## Metrics
+
+The manager displays lifetime image impressions, tracked clicks, and CTR for each ad. Image and destination requests pass through lightweight `misc.php` redirects so static, non-JavaScript views are included. Hidden rotating images are loaded only when shown. Metrics are aggregate operational totals: no visitor identity is stored, and the counts are not intended as billing-grade bot-filtered analytics.
 
 ## Uninstall
 

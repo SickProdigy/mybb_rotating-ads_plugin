@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.7.2',
+        'version' => '0.8.0',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -97,49 +97,93 @@ function rotating_ads_ensure_storage()
 {
     global $db;
 
-    if ($db->table_exists('rotating_ads')) {
-        return;
+    if (!$db->table_exists('rotating_ads')) {
+        $collation = $db->build_create_table_collation();
+
+        switch ($db->type) {
+            case 'pgsql':
+                $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
+                    aid serial,
+                    slot varchar(10) NOT NULL default 'square',
+                    image_url varchar(500) NOT NULL default '',
+                    destination_url varchar(500) NOT NULL default '',
+                    alt_text varchar(255) NOT NULL default '',
+                    enabled smallint NOT NULL default '1',
+                    display_order integer NOT NULL default '0',
+                    weight integer NOT NULL default '1',
+                    start_at integer NOT NULL default '0',
+                    end_at integer NOT NULL default '0',
+                    max_impressions bigint NOT NULL default '0',
+                    max_clicks bigint NOT NULL default '0',
+                    impressions bigint NOT NULL default '0',
+                    clicks bigint NOT NULL default '0',
+                    country_mode varchar(10) NOT NULL default 'all',
+                    country_codes varchar(1000) NOT NULL default '',
+                    PRIMARY KEY (aid)
+                )");
+                break;
+            case 'sqlite':
+                $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
+                    aid INTEGER PRIMARY KEY,
+                    slot varchar(10) NOT NULL default 'square',
+                    image_url varchar(500) NOT NULL default '',
+                    destination_url varchar(500) NOT NULL default '',
+                    alt_text varchar(255) NOT NULL default '',
+                    enabled tinyint(1) NOT NULL default '1',
+                    display_order int NOT NULL default '0',
+                    weight int NOT NULL default '1',
+                    start_at int NOT NULL default '0',
+                    end_at int NOT NULL default '0',
+                    max_impressions bigint NOT NULL default '0',
+                    max_clicks bigint NOT NULL default '0',
+                    impressions bigint NOT NULL default '0',
+                    clicks bigint NOT NULL default '0',
+                    country_mode varchar(10) NOT NULL default 'all',
+                    country_codes varchar(1000) NOT NULL default ''
+                )");
+                break;
+            default:
+                $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
+                    aid int unsigned NOT NULL auto_increment,
+                    slot varchar(10) NOT NULL default 'square',
+                    image_url varchar(500) NOT NULL default '',
+                    destination_url varchar(500) NOT NULL default '',
+                    alt_text varchar(255) NOT NULL default '',
+                    enabled tinyint(1) NOT NULL default '1',
+                    display_order int NOT NULL default '0',
+                    weight smallint unsigned NOT NULL default '1',
+                    start_at int unsigned NOT NULL default '0',
+                    end_at int unsigned NOT NULL default '0',
+                    max_impressions bigint unsigned NOT NULL default '0',
+                    max_clicks bigint unsigned NOT NULL default '0',
+                    impressions bigint unsigned NOT NULL default '0',
+                    clicks bigint unsigned NOT NULL default '0',
+                    country_mode varchar(10) NOT NULL default 'all',
+                    country_codes varchar(1000) NOT NULL default '',
+                    PRIMARY KEY (aid),
+                    KEY slot_enabled (slot, enabled)
+                ) ENGINE=MyISAM{$collation}");
+                break;
+        }
     }
 
-    $collation = $db->build_create_table_collation();
-
-    switch ($db->type) {
-        case 'pgsql':
-            $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
-                aid serial,
-                slot varchar(10) NOT NULL default 'square',
-                image_url varchar(500) NOT NULL default '',
-                destination_url varchar(500) NOT NULL default '',
-                alt_text varchar(255) NOT NULL default '',
-                enabled smallint NOT NULL default '1',
-                display_order integer NOT NULL default '0',
-                PRIMARY KEY (aid)
-            )");
-            break;
-        case 'sqlite':
-            $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
-                aid INTEGER PRIMARY KEY,
-                slot varchar(10) NOT NULL default 'square',
-                image_url varchar(500) NOT NULL default '',
-                destination_url varchar(500) NOT NULL default '',
-                alt_text varchar(255) NOT NULL default '',
-                enabled tinyint(1) NOT NULL default '1',
-                display_order int NOT NULL default '0'
-            )");
-            break;
-        default:
-            $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
-                aid int unsigned NOT NULL auto_increment,
-                slot varchar(10) NOT NULL default 'square',
-                image_url varchar(500) NOT NULL default '',
-                destination_url varchar(500) NOT NULL default '',
-                alt_text varchar(255) NOT NULL default '',
-                enabled tinyint(1) NOT NULL default '1',
-                display_order int NOT NULL default '0',
-                PRIMARY KEY (aid),
-                KEY slot_enabled (slot, enabled, display_order)
-            ) ENGINE=MyISAM{$collation}");
-            break;
+    $integer = $db->type === 'pgsql' ? 'integer' : 'int';
+    $bigint = 'bigint';
+    $columns = array(
+        'weight' => "{$integer} NOT NULL default '1'",
+        'start_at' => "{$integer} NOT NULL default '0'",
+        'end_at' => "{$integer} NOT NULL default '0'",
+        'max_impressions' => "{$bigint} NOT NULL default '0'",
+        'max_clicks' => "{$bigint} NOT NULL default '0'",
+        'impressions' => "{$bigint} NOT NULL default '0'",
+        'clicks' => "{$bigint} NOT NULL default '0'",
+        'country_mode' => "varchar(10) NOT NULL default 'all'",
+        'country_codes' => "varchar(1000) NOT NULL default ''"
+    );
+    foreach ($columns as $name => $definition) {
+        if (!$db->field_exists($name, 'rotating_ads')) {
+            $db->add_column('rotating_ads', $name, $definition);
+        }
     }
 }
 
@@ -321,6 +365,52 @@ function rotating_ads_ensure_settings()
 }
 
 $plugins->add_hook('global_start', 'rotating_ads_build_output');
+$plugins->add_hook('misc_start', 'rotating_ads_track_request');
+
+function rotating_ads_track_request()
+{
+    global $mybb, $db;
+
+    $action = isset($mybb->input['action']) ? $mybb->input['action'] : '';
+    if ($action !== 'rotating_ads_click' && $action !== 'rotating_ads_image') {
+        return;
+    }
+
+    if ($db->table_exists('rotating_ads') && !$db->field_exists('impressions', 'rotating_ads')) {
+        rotating_ads_ensure_storage();
+    }
+
+    $aid = isset($mybb->input['aid']) ? (int)$mybb->input['aid'] : 0;
+    $query = $db->simple_select('rotating_ads', '*', "aid='{$aid}'", array('limit' => 1));
+    $ad = $db->fetch_array($query);
+    $target_field = $action === 'rotating_ads_click' ? 'destination_url' : 'image_url';
+
+    if (empty($ad['aid']) || !rotating_ads_valid_http_url($ad[$target_field])) {
+        error(rotating_ads_lang('rotating_ads_not_found', 'The selected ad could not be found.'));
+    }
+
+    if ($action === 'rotating_ads_click') {
+        rotating_ads_increment_metric($aid, 'clicks');
+    } else {
+        rotating_ads_increment_metric($aid, 'impressions');
+    }
+
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Location: ' . $ad[$target_field], true, 302);
+    exit;
+}
+
+function rotating_ads_increment_metric($aid, $metric)
+{
+    global $db;
+
+    $metric = $metric === 'clicks' ? 'clicks' : 'impressions';
+    $limit = $metric === 'clicks' ? 'max_clicks' : 'max_impressions';
+    $db->write_query(
+        'UPDATE ' . TABLE_PREFIX . "rotating_ads SET {$metric}={$metric}+1"
+        . " WHERE aid='" . (int)$aid . "' AND ({$limit}=0 OR {$metric}<{$limit})"
+    );
+}
 function rotating_ads_build_output()
 {
     global $mybb, $rotating_ads_assets, $rotating_ads_square, $rotating_ads_banner;
@@ -328,6 +418,11 @@ function rotating_ads_build_output()
     $rotating_ads_assets = '';
     $rotating_ads_square = '';
     $rotating_ads_banner = '';
+
+    $action = isset($mybb->input['action']) ? $mybb->input['action'] : '';
+    if ($action === 'rotating_ads_click' || $action === 'rotating_ads_image') {
+        return;
+    }
 
     if (rotating_ads_current_user_hidden()) {
         return;
@@ -344,7 +439,7 @@ function rotating_ads_build_output()
     if ($rotation_options['enabled'] && (count($square_ads) > 1 || count($banner_ads) > 1)) {
         $asset_base = isset($mybb->asset_url) && $mybb->asset_url !== '' ? $mybb->asset_url : $mybb->settings['bburl'];
         $asset_url = rtrim($asset_base, '/');
-        $script_url = $asset_url . '/jscripts/rotating-ads.js?ver=060';
+        $script_url = $asset_url . '/jscripts/rotating-ads.js?ver=080';
         $rotating_ads_assets = '<script type="text/javascript" src="' . htmlspecialchars_uni($script_url) . '" defer="defer"></script>';
     }
 
@@ -364,17 +459,24 @@ function rotating_ads_get_ads($slot)
     $slot = $slot === 'banner' ? 'banner' : 'square';
     $query = $db->simple_select(
         'rotating_ads',
-        'aid, image_url, destination_url, alt_text',
+        '*',
         "slot='" . $db->escape_string($slot) . "' AND enabled='1'",
         array('order_by' => 'display_order, aid', 'order_dir' => 'ASC')
     );
 
     while ($ad = $db->fetch_array($query)) {
-        if (!preg_match('#^https?://#i', $ad['image_url']) || !preg_match('#^https?://#i', $ad['destination_url'])) {
+        if (!array_key_exists('weight', $ad)) {
+            rotating_ads_ensure_storage();
+            return rotating_ads_get_ads($slot);
+        }
+
+        if (!rotating_ads_valid_http_url($ad['image_url']) || !rotating_ads_valid_http_url($ad['destination_url'])) {
             continue;
         }
 
-        $ads[] = $ad;
+        if (rotating_ads_ad_is_eligible($ad)) {
+            $ads[] = $ad;
+        }
     }
 
     return $ads;
@@ -439,8 +541,111 @@ function rotating_ads_prepare_ad_for_database($ad)
         'destination_url' => $db->escape_string(trim((string)$ad['destination_url'])),
         'alt_text' => $db->escape_string(trim((string)$ad['alt_text'])),
         'enabled' => empty($ad['enabled']) ? 0 : 1,
-        'display_order' => max(0, (int)$ad['display_order'])
+        'display_order' => isset($ad['display_order']) ? max(0, (int)$ad['display_order']) : 0,
+        'weight' => isset($ad['weight']) ? min(100, max(1, (int)$ad['weight'])) : 1,
+        'start_at' => isset($ad['start_at']) ? max(0, (int)$ad['start_at']) : 0,
+        'end_at' => isset($ad['end_at']) ? max(0, (int)$ad['end_at']) : 0,
+        'max_impressions' => isset($ad['max_impressions']) ? max(0, (int)$ad['max_impressions']) : 0,
+        'max_clicks' => isset($ad['max_clicks']) ? max(0, (int)$ad['max_clicks']) : 0,
+        'country_mode' => $db->escape_string(rotating_ads_country_mode(isset($ad['country_mode']) ? $ad['country_mode'] : 'all')),
+        'country_codes' => $db->escape_string(rotating_ads_normalize_country_codes(isset($ad['country_codes']) ? $ad['country_codes'] : ''))
     );
+}
+
+function rotating_ads_valid_http_url($url)
+{
+    $url = trim((string)$url);
+    $scheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
+
+    return ($scheme === 'http' || $scheme === 'https') && filter_var($url, FILTER_VALIDATE_URL) !== false;
+}
+
+function rotating_ads_country_mode($mode)
+{
+    return in_array($mode, array('allow', 'block'), true) ? $mode : 'all';
+}
+
+function rotating_ads_normalize_country_codes($value)
+{
+    $codes = preg_split('/[\s,]+/', strtoupper(trim((string)$value)));
+    $normalized = array();
+    foreach ($codes as $code) {
+        if (preg_match('/^[A-Z]{2}$/', $code) && !in_array($code, $normalized, true)) {
+            $normalized[] = $code;
+        }
+    }
+
+    return implode(',', $normalized);
+}
+
+function rotating_ads_country_code($server = null)
+{
+    $server = is_array($server) ? $server : $_SERVER;
+    foreach (array('HTTP_CF_IPCOUNTRY', 'GEOIP_COUNTRY_CODE', 'HTTP_X_APPENGINE_COUNTRY') as $key) {
+        $code = isset($server[$key]) ? strtoupper(trim($server[$key])) : '';
+        if (preg_match('/^[A-Z]{2}$/', $code)) {
+            return $code;
+        }
+    }
+
+    return '';
+}
+
+function rotating_ads_ad_is_eligible($ad, $now = null, $country = null)
+{
+    $now = $now === null ? (defined('TIME_NOW') ? TIME_NOW : time()) : (int)$now;
+    if (empty($ad['enabled'])) {
+        return false;
+    }
+    if (!empty($ad['start_at']) && $now < (int)$ad['start_at']) {
+        return false;
+    }
+    if (!empty($ad['end_at']) && $now > (int)$ad['end_at']) {
+        return false;
+    }
+    if (!empty($ad['max_impressions']) && (int)$ad['impressions'] >= (int)$ad['max_impressions']) {
+        return false;
+    }
+    if (!empty($ad['max_clicks']) && (int)$ad['clicks'] >= (int)$ad['max_clicks']) {
+        return false;
+    }
+
+    $mode = rotating_ads_country_mode(isset($ad['country_mode']) ? $ad['country_mode'] : 'all');
+    if ($mode === 'all') {
+        return true;
+    }
+
+    $country = $country === null ? rotating_ads_country_code() : strtoupper(trim((string)$country));
+    $codes = explode(',', rotating_ads_normalize_country_codes(isset($ad['country_codes']) ? $ad['country_codes'] : ''));
+    $matched = $country !== '' && in_array($country, $codes, true);
+
+    return $mode === 'allow' ? $matched : !$matched;
+}
+
+function rotating_ads_weighted_index($ads, $exclude = -1)
+{
+    $total = 0;
+    foreach ($ads as $index => $ad) {
+        if ((int)$index !== (int)$exclude) {
+            $total += max(1, isset($ad['weight']) ? (int)$ad['weight'] : 1);
+        }
+    }
+    if ($total < 1) {
+        return 0;
+    }
+
+    $pick = mt_rand(1, $total);
+    foreach ($ads as $index => $ad) {
+        if ((int)$index === (int)$exclude) {
+            continue;
+        }
+        $pick -= max(1, isset($ad['weight']) ? (int)$ad['weight'] : 1);
+        if ($pick <= 0) {
+            return $index;
+        }
+    }
+
+    return 0;
 }
 
 function rotating_ads_render_slot($format, $ads, $label = 'Sponsored', $open_new_tab = true, $rotation_options = array())
@@ -456,7 +661,7 @@ function rotating_ads_render_slot($format, $ads, $label = 'Sponsored', $open_new
     $rotate = !empty($rotation_options['enabled']) && count($ads) > 1;
 
     if ($rotate) {
-        $first_index = array_rand($ads);
+        $first_index = rotating_ads_weighted_index($ads);
         $first_ad = $ads[$first_index];
         unset($ads[$first_index]);
         array_unshift($ads, $first_ad);
@@ -475,7 +680,7 @@ function rotating_ads_render_slot($format, $ads, $label = 'Sponsored', $open_new
             . '</aside>';
     }
 
-    $ad = $ads[array_rand($ads)];
+    $ad = $ads[rotating_ads_weighted_index($ads)];
 
     return '<aside class="rotating-ad rotating-ad--' . $format . '">'
         . $title
@@ -485,12 +690,30 @@ function rotating_ads_render_slot($format, $ads, $label = 'Sponsored', $open_new
 
 function rotating_ads_render_link($ad, $open_new_tab = true, $hidden = false)
 {
+    global $mybb;
+
     $target = $open_new_tab ? ' target="_blank"' : '';
     $rel = $open_new_tab ? 'sponsored noopener noreferrer' : 'sponsored';
     $hidden_attribute = $hidden ? ' hidden="hidden"' : '';
+    $aid = isset($ad['aid']) ? (int)$ad['aid'] : 0;
+    $weight = isset($ad['weight']) ? max(1, (int)$ad['weight']) : 1;
+    $destination_url = $ad['destination_url'];
+    $image_url = $ad['image_url'];
+    $image_attribute = ' src="' . htmlspecialchars_uni($image_url) . '"';
+    $data = ' data-rotating-ads-weight="' . $weight . '"';
 
-    return '<a class="rotating-ad__link" href="' . htmlspecialchars_uni($ad['destination_url']) . '"' . $target . ' rel="' . $rel . '"' . $hidden_attribute . '>'
-        . '<img class="rotating-ad__image" src="' . htmlspecialchars_uni($ad['image_url']) . '" alt="' . htmlspecialchars_uni($ad['alt_text']) . '" loading="lazy" />'
+    if ($aid > 0) {
+        $base_url = rtrim($mybb->settings['bburl'], '/') . '/misc.php';
+        $destination_url = $base_url . '?action=rotating_ads_click&aid=' . $aid;
+        $tracked_image_url = $base_url . '?action=rotating_ads_image&aid=' . $aid;
+        $image_attribute = $hidden
+            ? ' data-src="' . htmlspecialchars_uni($tracked_image_url) . '"'
+            : ' src="' . htmlspecialchars_uni($tracked_image_url) . '"';
+        $data .= ' data-rotating-ads-aid="' . $aid . '"';
+    }
+
+    return '<a class="rotating-ad__link" href="' . htmlspecialchars_uni($destination_url) . '"' . $target . ' rel="' . $rel . '"' . $hidden_attribute . $data . '>'
+        . '<img class="rotating-ad__image"' . $image_attribute . ' alt="' . htmlspecialchars_uni($ad['alt_text']) . '" loading="lazy" />'
         . '</a>';
 }
 
@@ -748,14 +971,15 @@ function rotating_ads_admin_page()
 {
     global $mybb, $page, $db, $lang;
 
-    if (!$db->table_exists('rotating_ads')) {
-        rotating_ads_ensure_storage();
-        rotating_ads_migrate_inventory_settings();
-        rotating_ads_ensure_settings();
-    }
-
     if (!isset($page) || $page->active_action !== 'rotating_ads') {
         return;
+    }
+
+    $had_storage = $db->table_exists('rotating_ads');
+    rotating_ads_ensure_storage();
+    if (!$had_storage) {
+        rotating_ads_migrate_inventory_settings();
+        rotating_ads_ensure_settings();
     }
 
     $lang->load('rotating_ads');
@@ -800,11 +1024,11 @@ function rotating_ads_admin_page()
     $table = new Table;
     $table->construct_header(rotating_ads_lang('rotating_ads_ad', 'Ad'));
     $table->construct_header(rotating_ads_lang('rotating_ads_slot', 'Slot'), array('width' => '100'));
-    $table->construct_header(rotating_ads_lang('rotating_ads_status', 'Status'), array('width' => '90', 'class' => 'align_center'));
-    $table->construct_header(rotating_ads_lang('rotating_ads_order', 'Order'), array('width' => '70', 'class' => 'align_center'));
+    $table->construct_header(rotating_ads_lang('rotating_ads_delivery', 'Delivery'), array('width' => '180'));
+    $table->construct_header(rotating_ads_lang('rotating_ads_metrics', 'Metrics'), array('width' => '150'));
     $table->construct_header($lang->controls, array('width' => '100', 'class' => 'align_center'));
 
-    $query = $db->simple_select('rotating_ads', '*', '', array('order_by' => 'slot, display_order, aid', 'order_dir' => 'ASC'));
+    $query = $db->simple_select('rotating_ads', '*', '', array('order_by' => 'slot, aid', 'order_dir' => 'ASC'));
     $has_ads = false;
     while ($ad = $db->fetch_array($query)) {
         $has_ads = true;
@@ -814,8 +1038,8 @@ function rotating_ads_admin_page()
 
         $table->construct_cell('<strong><a href="' . $edit_url . '">' . htmlspecialchars_uni($name) . '</a></strong><br /><small>' . htmlspecialchars_uni($ad['destination_url']) . '</small>');
         $table->construct_cell(ucfirst(htmlspecialchars_uni($ad['slot'])));
-        $table->construct_cell(!empty($ad['enabled']) ? $lang->yes : $lang->no, array('class' => 'align_center'));
-        $table->construct_cell((int)$ad['display_order'], array('class' => 'align_center'));
+        $table->construct_cell(rotating_ads_admin_delivery_summary($ad));
+        $table->construct_cell(rotating_ads_admin_metrics_summary($ad));
 
         $popup = new PopupMenu('rotating_ad_' . $aid, $lang->options);
         $popup->add_item($lang->edit, $edit_url);
@@ -864,7 +1088,16 @@ function rotating_ads_admin_form($action, $aid = 0)
         'destination_url' => '',
         'alt_text' => '',
         'enabled' => 1,
-        'display_order' => 0
+        'display_order' => 0,
+        'weight' => 1,
+        'start_at' => 0,
+        'end_at' => 0,
+        'max_impressions' => 0,
+        'max_clicks' => 0,
+        'impressions' => 0,
+        'clicks' => 0,
+        'country_mode' => 'all',
+        'country_codes' => ''
     );
 
     if ($editing) {
@@ -879,26 +1112,53 @@ function rotating_ads_admin_form($action, $aid = 0)
     $errors = array();
     if ($mybb->request_method === 'post') {
         verify_post_check($mybb->get_input('my_post_key'));
+        $current_impressions = isset($ad['impressions']) ? (int)$ad['impressions'] : 0;
+        $current_clicks = isset($ad['clicks']) ? (int)$ad['clicks'] : 0;
         $ad = array(
             'slot' => $mybb->get_input('slot') === 'banner' ? 'banner' : 'square',
             'image_url' => trim($mybb->get_input('image_url')),
             'destination_url' => trim($mybb->get_input('destination_url')),
             'alt_text' => trim($mybb->get_input('alt_text')),
             'enabled' => $mybb->get_input('enabled') ? 1 : 0,
-            'display_order' => max(0, (int)$mybb->get_input('display_order'))
+            'display_order' => 0,
+            'weight' => min(100, max(1, (int)$mybb->get_input('weight'))),
+            'start_at' => rotating_ads_parse_admin_date($mybb->get_input('start_date'), false),
+            'end_at' => rotating_ads_parse_admin_date($mybb->get_input('end_date'), true),
+            'max_impressions' => max(0, (int)$mybb->get_input('max_impressions')),
+            'max_clicks' => max(0, (int)$mybb->get_input('max_clicks')),
+            'country_mode' => rotating_ads_country_mode($mybb->get_input('country_mode')),
+            'country_codes' => rotating_ads_normalize_country_codes($mybb->get_input('country_codes')),
+            'reset_metrics' => $mybb->get_input('reset_metrics') ? 1 : 0,
+            'impressions' => $current_impressions,
+            'clicks' => $current_clicks
         );
 
-        if (!preg_match('#^https?://#i', $ad['image_url'])) {
+        if (!rotating_ads_valid_http_url($ad['image_url'])) {
             $errors[] = rotating_ads_lang('rotating_ads_invalid_image_url', 'Enter a valid HTTP(S) image URL.');
         }
-        if (!preg_match('#^https?://#i', $ad['destination_url'])) {
+        if (!rotating_ads_valid_http_url($ad['destination_url'])) {
             $errors[] = rotating_ads_lang('rotating_ads_invalid_destination_url', 'Enter a valid HTTP(S) destination URL.');
+        }
+        if (trim($mybb->get_input('start_date')) !== '' && !$ad['start_at']) {
+            $errors[] = rotating_ads_lang('rotating_ads_invalid_start_date', 'Enter the start date as YYYY-MM-DD.');
+        }
+        if (trim($mybb->get_input('end_date')) !== '' && !$ad['end_at']) {
+            $errors[] = rotating_ads_lang('rotating_ads_invalid_end_date', 'Enter the end date as YYYY-MM-DD.');
+        }
+        if ($ad['start_at'] && $ad['end_at'] && $ad['end_at'] < $ad['start_at']) {
+            $errors[] = rotating_ads_lang('rotating_ads_invalid_date_range', 'The end date must be on or after the start date.');
+        }
+        if ($ad['country_mode'] !== 'all' && $ad['country_codes'] === '') {
+            $errors[] = rotating_ads_lang('rotating_ads_country_codes_required', 'Enter at least one two-letter country code for country targeting.');
         }
 
         if (empty($errors)) {
             $data = rotating_ads_prepare_ad_for_database($ad);
             if ($editing) {
                 $db->update_query('rotating_ads', $data, "aid='" . (int)$aid . "'", 1);
+                if (!empty($ad['reset_metrics'])) {
+                    $db->update_query('rotating_ads', array('impressions' => 0, 'clicks' => 0), "aid='" . (int)$aid . "'", 1);
+                }
                 $message = rotating_ads_lang('rotating_ads_updated', 'The ad was updated.');
             } else {
                 $aid = (int)$db->insert_query('rotating_ads', $data);
@@ -952,15 +1212,59 @@ function rotating_ads_admin_form($action, $aid = 0)
         'alt_text'
     );
     $container->output_row(
-        rotating_ads_lang('rotating_ads_order', 'Order'),
-        rotating_ads_lang('rotating_ads_order_description', 'Lower numbers appear first in the manager and rotation sequence.'),
-        $form->generate_numeric_field('display_order', (int)$ad['display_order'], array('min' => 0))
+        rotating_ads_lang('rotating_ads_weight', 'Delivery weight'),
+        rotating_ads_lang('rotating_ads_weight_description', 'Higher values make this ad more likely to be selected. Use 1 for equal delivery.'),
+        $form->generate_numeric_field('weight', (int)$ad['weight'], array('min' => 1, 'max' => 100))
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_start_date', 'Start date'),
+        rotating_ads_lang('rotating_ads_start_date_description', 'Optional UTC date in YYYY-MM-DD format.'),
+        $form->generate_text_box('start_date', rotating_ads_format_admin_date($ad['start_at']), array('id' => 'start_date')),
+        'start_date'
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_end_date', 'End date'),
+        rotating_ads_lang('rotating_ads_end_date_description', 'Optional UTC date in YYYY-MM-DD format. The ad runs through the end of that day.'),
+        $form->generate_text_box('end_date', rotating_ads_format_admin_date($ad['end_at']), array('id' => 'end_date')),
+        'end_date'
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_max_impressions', 'Impression limit'),
+        rotating_ads_lang('rotating_ads_max_impressions_description', 'Stop delivering after this many image views. Use 0 for unlimited.'),
+        $form->generate_numeric_field('max_impressions', (int)$ad['max_impressions'], array('min' => 0))
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_max_clicks', 'Click limit'),
+        rotating_ads_lang('rotating_ads_max_clicks_description', 'Stop delivering after this many tracked clicks. Use 0 for unlimited.'),
+        $form->generate_numeric_field('max_clicks', (int)$ad['max_clicks'], array('min' => 0))
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_country_mode', 'Country targeting'),
+        rotating_ads_lang('rotating_ads_country_mode_description', 'Allow or block countries when your server or proxy provides a visitor country code.'),
+        $form->generate_select_box('country_mode', array(
+            'all' => rotating_ads_lang('rotating_ads_country_all', 'All countries'),
+            'allow' => rotating_ads_lang('rotating_ads_country_allow', 'Only listed countries'),
+            'block' => rotating_ads_lang('rotating_ads_country_block', 'All except listed countries')
+        ), $ad['country_mode'])
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_country_codes', 'Country codes'),
+        rotating_ads_lang('rotating_ads_country_codes_description', 'Comma-separated ISO two-letter codes, such as US, CA, GB.'),
+        $form->generate_text_box('country_codes', $ad['country_codes'], array('id' => 'country_codes')),
+        'country_codes'
     );
     $container->output_row(
         rotating_ads_lang('rotating_ads_status', 'Status'),
         '',
         $form->generate_check_box('enabled', 1, rotating_ads_lang('rotating_ads_enabled', 'Enabled'), array('checked' => !empty($ad['enabled'])))
     );
+    if ($editing) {
+        $container->output_row(
+            rotating_ads_lang('rotating_ads_metrics', 'Metrics'),
+            rotating_ads_admin_metrics_summary($ad),
+            $form->generate_check_box('reset_metrics', 1, rotating_ads_lang('rotating_ads_reset_metrics', 'Reset impressions and clicks when saving'))
+        );
+    }
     $container->end();
     $submit_label = $editing
         ? rotating_ads_lang('rotating_ads_save_changes', 'Save changes')
@@ -969,6 +1273,82 @@ function rotating_ads_admin_form($action, $aid = 0)
     $form->output_submit_wrapper($buttons);
     $form->end();
     $page->output_footer();
+}
+
+function rotating_ads_parse_admin_date($value, $end_of_day = false)
+{
+    $value = trim((string)$value);
+    if ($value === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        return 0;
+    }
+
+    $parts = array_map('intval', explode('-', $value));
+    if (!checkdate($parts[1], $parts[2], $parts[0])) {
+        return 0;
+    }
+
+    return gmmktime($end_of_day ? 23 : 0, $end_of_day ? 59 : 0, $end_of_day ? 59 : 0, $parts[1], $parts[2], $parts[0]);
+}
+
+function rotating_ads_format_admin_date($timestamp)
+{
+    return !empty($timestamp) ? gmdate('Y-m-d', (int)$timestamp) : '';
+}
+
+function rotating_ads_admin_delivery_status($ad, $now = null)
+{
+    $now = $now === null ? (defined('TIME_NOW') ? TIME_NOW : time()) : (int)$now;
+    if (empty($ad['enabled'])) {
+        return rotating_ads_lang('rotating_ads_status_disabled', 'Disabled');
+    }
+    if (!empty($ad['start_at']) && $now < (int)$ad['start_at']) {
+        return rotating_ads_lang('rotating_ads_status_scheduled', 'Scheduled');
+    }
+    if (!empty($ad['end_at']) && $now > (int)$ad['end_at']) {
+        return rotating_ads_lang('rotating_ads_status_ended', 'Ended');
+    }
+    if (!empty($ad['max_impressions']) && (int)$ad['impressions'] >= (int)$ad['max_impressions']) {
+        return rotating_ads_lang('rotating_ads_status_impression_limit', 'Impression limit reached');
+    }
+    if (!empty($ad['max_clicks']) && (int)$ad['clicks'] >= (int)$ad['max_clicks']) {
+        return rotating_ads_lang('rotating_ads_status_click_limit', 'Click limit reached');
+    }
+
+    return rotating_ads_lang('rotating_ads_status_active', 'Active');
+}
+
+function rotating_ads_admin_delivery_summary($ad)
+{
+    $summary = '<strong>' . htmlspecialchars_uni(rotating_ads_admin_delivery_status($ad)) . '</strong>';
+    $details = array(rotating_ads_lang('rotating_ads_weight', 'Delivery weight') . ': ' . max(1, (int)$ad['weight']));
+    if (!empty($ad['start_at']) || !empty($ad['end_at'])) {
+        $details[] = htmlspecialchars_uni(rotating_ads_format_admin_date($ad['start_at']) ?: '...')
+            . ' - ' . htmlspecialchars_uni(rotating_ads_format_admin_date($ad['end_at']) ?: '...');
+    }
+    $country_mode = rotating_ads_country_mode(isset($ad['country_mode']) ? $ad['country_mode'] : 'all');
+    if ($country_mode !== 'all') {
+        $country_label = $country_mode === 'allow'
+            ? rotating_ads_lang('rotating_ads_country_allow_short', 'Only')
+            : rotating_ads_lang('rotating_ads_country_block_short', 'Except');
+        $details[] = htmlspecialchars_uni($country_label . ': ' . $ad['country_codes']);
+    }
+
+    return $summary . '<br /><small>' . implode('<br />', $details) . '</small>';
+}
+
+function rotating_ads_admin_metrics_summary($ad)
+{
+    $impressions = isset($ad['impressions']) ? (int)$ad['impressions'] : 0;
+    $clicks = isset($ad['clicks']) ? (int)$ad['clicks'] : 0;
+    $max_impressions = isset($ad['max_impressions']) ? (int)$ad['max_impressions'] : 0;
+    $max_clicks = isset($ad['max_clicks']) ? (int)$ad['max_clicks'] : 0;
+    $ctr = $impressions > 0 ? number_format(($clicks / $impressions) * 100, 2) : '0.00';
+    $impression_total = number_format($impressions) . ($max_impressions ? ' / ' . number_format($max_impressions) : '');
+    $click_total = number_format($clicks) . ($max_clicks ? ' / ' . number_format($max_clicks) : '');
+
+    return $impression_total . ' ' . rotating_ads_lang('rotating_ads_impressions', 'impressions')
+        . '<br />' . $click_total . ' ' . rotating_ads_lang('rotating_ads_clicks', 'clicks')
+        . '<br />' . $ctr . '% CTR';
 }
 
 function rotating_ads_current_user_hidden()

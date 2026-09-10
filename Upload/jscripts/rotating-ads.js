@@ -28,17 +28,37 @@
         return 0;
     }
 
-    function nextIndex(current, total) {
-        if (total < 2) {
+    function nextIndex(current, links) {
+        if (links.length < 2) {
             return current;
         }
 
-        var next = current;
-        while (next === current) {
-            next = Math.floor(Math.random() * total);
+        var total = links.reduce(function(sum, link, index) {
+            return index === current ? sum : sum + Math.max(1, parseInt(link.getAttribute('data-rotating-ads-weight'), 10) || 1);
+        }, 0);
+        var pick = Math.floor(Math.random() * total) + 1;
+
+        for (var index = 0; index < links.length; index += 1) {
+            if (index === current) {
+                continue;
+            }
+            pick -= Math.max(1, parseInt(links[index].getAttribute('data-rotating-ads-weight'), 10) || 1);
+            if (pick <= 0) {
+                return index;
+            }
         }
 
-        return next;
+        return current === 0 ? 1 : 0;
+    }
+
+    function loadImage(link) {
+        var image = link.querySelector('.rotating-ad__image');
+        var source = image && image.getAttribute('data-src');
+
+        if (source) {
+            image.setAttribute('src', source + '&view=' + Date.now() + Math.floor(Math.random() * 100000));
+            image.removeAttribute('data-src');
+        }
     }
 
     function setupSlot(slot) {
@@ -57,8 +77,9 @@
         });
 
         function cycle() {
-            var next = nextIndex(current, links.length);
+            var next = nextIndex(current, links);
             links[current].hidden = true;
+            loadImage(links[next]);
             links[next].hidden = false;
             current = next;
             window.setTimeout(cycle, randomDelay(min, max));

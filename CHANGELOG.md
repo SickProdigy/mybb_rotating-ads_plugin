@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 - 2026-09-10
+
+- Added per-ad impression, click, and CTR totals with privacy-conscious tracked redirects.
+- Added delivery weights, UTC start/end dates, impression limits, and click limits.
+- Added country allowlist and blocklist targeting from common server-provided country headers.
+- Replaced the confusing order control with delivery and metrics summaries in Admin CP.
+- Kept weighted server-side selection and impression tracking functional without JavaScript.
+
 ## 0.7.2 - 2026-09-10
 
 - Fixed the native ad form submit button rendering without a label.

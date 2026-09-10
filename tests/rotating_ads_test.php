@@ -51,6 +51,7 @@ class RotatingAdsTestDatabase
     public $settings = array();
     public $ads = array();
     public $ads_table_exists = false;
+    public $ad_fields = array('aid', 'slot', 'image_url', 'destination_url', 'alt_text', 'enabled', 'display_order');
     public $themes = array(
         array('tid' => 2),
         array('tid' => 3),
@@ -148,6 +149,17 @@ class RotatingAdsTestDatabase
         }
 
         if ($table === 'rotating_ads') {
+            $values = array_merge(array(
+                'weight' => 1,
+                'start_at' => 0,
+                'end_at' => 0,
+                'max_impressions' => 0,
+                'max_clicks' => 0,
+                'impressions' => 0,
+                'clicks' => 0,
+                'country_mode' => 'all',
+                'country_codes' => '',
+            ), $values);
             $values['aid'] = $this->next_ad_id++;
             $this->ads[$values['aid']] = $values;
             return $values['aid'];
@@ -244,6 +256,28 @@ class RotatingAdsTestDatabase
         if (strpos($query, 'mybb_rotating_ads') !== false) {
             $this->ads_table_exists = true;
         }
+
+        if (preg_match("/SET (impressions|clicks)=\\1\+1 WHERE aid='([0-9]+)'/", $query, $matches)) {
+            $metric = $matches[1];
+            $aid = (int)$matches[2];
+            $limit = $metric === 'clicks' ? 'max_clicks' : 'max_impressions';
+            if (isset($this->ads[$aid])
+                && (empty($this->ads[$aid][$limit]) || (int)$this->ads[$aid][$metric] < (int)$this->ads[$aid][$limit])) {
+                $this->ads[$aid][$metric]++;
+            }
+        }
+    }
+
+    public function field_exists($field, $table)
+    {
+        return $table === 'rotating_ads' && in_array($field, $this->ad_fields, true);
+    }
+
+    public function add_column($table, $field, $definition)
+    {
+        if ($table === 'rotating_ads') {
+            $this->ad_fields[] = $field;
+        }
     }
 
     public function drop_table($table)
@@ -336,6 +370,10 @@ rotating_ads_test_assert(
     'plugin should register the global_start hook'
 );
 rotating_ads_test_assert(
+    isset($plugins->hooks['misc_start']) && $plugins->hooks['misc_start'] === 'rotating_ads_track_request',
+    'plugin should register its lightweight image and click tracking endpoint'
+);
+rotating_ads_test_assert(
     isset($plugins->hooks['admin_config_menu'])
     && $plugins->hooks['admin_config_menu'] === 'rotating_ads_admin_menu'
     && isset($plugins->hooks['admin_config_action_handler'])
@@ -353,7 +391,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.7.2',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.0',
     'plugin info should expose localized metadata and version'
 );
 rotating_ads_test_assert(
@@ -412,6 +450,50 @@ rotating_ads_test_assert(
     rotating_ads_parse_id_list('4, 8 8 bad 0') === array(4, 8),
     'ID list parser should keep unique positive numeric IDs'
 );
+rotating_ads_test_assert(
+    rotating_ads_normalize_country_codes('us, ca US invalid g7') === 'US,CA',
+    'country code normalization should keep unique ISO-style two-letter codes'
+);
+rotating_ads_test_assert(
+    rotating_ads_country_code(array('HTTP_CF_IPCOUNTRY' => 'us')) === 'US'
+    && rotating_ads_country_code(array('GEOIP_COUNTRY_CODE' => 'ca')) === 'CA',
+    'country detection should support common trusted server headers'
+);
+
+$campaign = array(
+    'enabled' => 1,
+    'start_at' => TIME_NOW - 60,
+    'end_at' => TIME_NOW + 60,
+    'max_impressions' => 10,
+    'impressions' => 9,
+    'max_clicks' => 2,
+    'clicks' => 1,
+    'country_mode' => 'allow',
+    'country_codes' => 'US,CA'
+);
+rotating_ads_test_assert(
+    rotating_ads_ad_is_eligible($campaign, TIME_NOW, 'US')
+    && !rotating_ads_ad_is_eligible($campaign, TIME_NOW, 'GB'),
+    'country allowlists should include only matching visitors'
+);
+$campaign['country_mode'] = 'block';
+rotating_ads_test_assert(
+    !rotating_ads_ad_is_eligible($campaign, TIME_NOW, 'CA')
+    && rotating_ads_ad_is_eligible($campaign, TIME_NOW, ''),
+    'country blocklists should exclude matches and allow visitors with unknown countries'
+);
+$campaign['country_mode'] = 'all';
+$campaign['impressions'] = 10;
+rotating_ads_test_assert(
+    !rotating_ads_ad_is_eligible($campaign, TIME_NOW, 'US'),
+    'ads should stop being eligible at their impression limit'
+);
+rotating_ads_test_assert(
+    rotating_ads_parse_admin_date('2026-09-10') === 1788998400
+    && rotating_ads_parse_admin_date('2026-09-10', true) === 1789084799
+    && rotating_ads_parse_admin_date('2026-02-30') === 0,
+    'campaign dates should parse strictly in UTC with inclusive end dates'
+);
 
 $mybb->settings['rotating_ads_enable_rotation'] = '1';
 $mybb->settings['rotating_ads_rotation_min_seconds'] = '12';
@@ -466,6 +548,12 @@ rotating_ads_test_assert(
     && (int)$db->ads[2]['enabled'] === 0,
     'legacy inventory settings should migrate to stable ad records and then be removed'
 );
+rotating_ads_test_assert(
+    in_array('weight', $db->ad_fields, true)
+    && in_array('impressions', $db->ad_fields, true)
+    && in_array('country_codes', $db->ad_fields, true),
+    'storage upgrades should add campaign and metrics fields'
+);
 
 rotating_ads_build_output();
 rotating_ads_test_assert(
@@ -504,11 +592,25 @@ $db->insert_query('rotating_ads', rotating_ads_prepare_ad_for_database(array(
 )));
 rotating_ads_build_output();
 rotating_ads_test_assert(
-    strpos($rotating_ads_assets, '/jscripts/rotating-ads.js?ver=060') !== false
+    strpos($rotating_ads_assets, '/jscripts/rotating-ads.js?ver=080') !== false
     && strpos($rotating_ads_square, 'data-rotating-ads="1"') !== false
     && strpos($rotating_ads_square, 'data-rotating-ads-min="4"') !== false
-    && strpos($rotating_ads_square, 'data-rotating-ads-max="8"') !== false,
+    && strpos($rotating_ads_square, 'data-rotating-ads-max="8"') !== false
+    && strpos($rotating_ads_square, 'action=rotating_ads_click&amp;aid=') !== false
+    && substr_count($rotating_ads_square, 'action=rotating_ads_image&amp;aid=') === 2
+    && substr_count($rotating_ads_square, ' src="https://example.com/forum/misc.php?action=rotating_ads_image') === 1
+    && substr_count($rotating_ads_square, ' data-src="https://example.com/forum/misc.php?action=rotating_ads_image') === 1,
     'global output should add the rotation script and timing data when in-page rotation is enabled'
+);
+
+$metric_aid = array_key_first($db->ads);
+$before_impressions = (int)$db->ads[$metric_aid]['impressions'];
+rotating_ads_increment_metric($metric_aid, 'impressions');
+rotating_ads_increment_metric($metric_aid, 'clicks');
+rotating_ads_test_assert(
+    (int)$db->ads[$metric_aid]['impressions'] === $before_impressions + 1
+    && (int)$db->ads[$metric_aid]['clicks'] === 1,
+    'tracked image and click requests should increment aggregate metrics'
 );
 
 $mybb->settings['rotating_ads_enable_rotation'] = '0';
