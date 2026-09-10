@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.3 - 2026-09-10
+
+- Shortened tracked click URLs to use the `ra_click` action.
+- Added a readable `to` hostname to tracked links while keeping the database ad ID authoritative for redirects.
+
 ## 0.8.2 - 2026-09-10
 
 - Removed pre-release legacy inventory migration and automatic old-schema adaptation.

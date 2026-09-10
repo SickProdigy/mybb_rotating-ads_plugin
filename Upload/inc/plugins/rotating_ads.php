@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.8.2',
+        'version' => '0.8.3',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -310,20 +310,20 @@ function rotating_ads_track_request()
     global $mybb, $db;
 
     $action = isset($mybb->input['action']) ? $mybb->input['action'] : '';
-    if ($action !== 'rotating_ads_click' && $action !== 'rotating_ads_image') {
+    if ($action !== 'ra_click' && $action !== 'rotating_ads_image') {
         return;
     }
 
     $aid = isset($mybb->input['aid']) ? (int)$mybb->input['aid'] : 0;
     $query = $db->simple_select('rotating_ads', '*', "aid='{$aid}'", array('limit' => 1));
     $ad = $db->fetch_array($query);
-    $target_field = $action === 'rotating_ads_click' ? 'destination_url' : 'image_url';
+    $target_field = $action === 'ra_click' ? 'destination_url' : 'image_url';
 
     if (empty($ad['aid']) || !rotating_ads_valid_url($ad[$target_field])) {
         error(rotating_ads_lang('rotating_ads_not_found', 'The selected ad could not be found.'));
     }
 
-    if ($action === 'rotating_ads_click') {
+    if ($action === 'ra_click') {
         rotating_ads_increment_metric($aid, 'clicks');
     } else {
         rotating_ads_increment_metric($aid, 'impressions');
@@ -354,7 +354,7 @@ function rotating_ads_build_output()
     $rotating_ads_banner = '';
 
     $action = isset($mybb->input['action']) ? $mybb->input['action'] : '';
-    if ($action === 'rotating_ads_click' || $action === 'rotating_ads_image') {
+    if ($action === 'ra_click' || $action === 'rotating_ads_image') {
         return;
     }
 
@@ -587,7 +587,8 @@ function rotating_ads_render_link($ad, $open_new_tab = true, $hidden = false)
 
     if ($aid > 0) {
         $base_url = rtrim($mybb->settings['bburl'], '/') . '/misc.php';
-        $destination_url = $base_url . '?action=rotating_ads_click&aid=' . $aid;
+        $destination_label = rotating_ads_destination_label($ad['destination_url']);
+        $destination_url = $base_url . '?action=ra_click&to=' . rawurlencode($destination_label) . '&aid=' . $aid;
         $tracked_image_url = $base_url . '?action=rotating_ads_image&aid=' . $aid;
         $image_attribute = $hidden
             ? ' data-src="' . htmlspecialchars_uni($tracked_image_url) . '"'
@@ -598,6 +599,18 @@ function rotating_ads_render_link($ad, $open_new_tab = true, $hidden = false)
     return '<a class="rotating-ad__link" href="' . htmlspecialchars_uni($destination_url) . '"' . $target . ' rel="' . $rel . '"' . $hidden_attribute . $data . '>'
         . '<img class="rotating-ad__image"' . $image_attribute . ' alt="' . htmlspecialchars_uni($ad['alt_text']) . '" loading="lazy" />'
         . '</a>';
+}
+
+function rotating_ads_destination_label($destination_url)
+{
+    global $mybb;
+
+    $host = parse_url($destination_url, PHP_URL_HOST);
+    if (!$host && strpos($destination_url, '/') === 0) {
+        $host = parse_url($mybb->settings['bburl'], PHP_URL_HOST);
+    }
+
+    return $host ? strtolower($host) : 'forum';
 }
 
 function rotating_ads_setting_enabled($name, $default = true)

@@ -364,7 +364,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.2',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.3',
     'plugin info should expose localized metadata and version'
 );
 rotating_ads_test_assert(
@@ -396,7 +396,7 @@ $local_ad = array(array(
 ));
 $local_rendered = rotating_ads_render_slot('square', $local_ad, 'Sponsored', false);
 rotating_ads_test_assert(
-    strpos($local_rendered, 'action=rotating_ads_click&amp;aid=99') !== false
+    strpos($local_rendered, 'action=ra_click&amp;to=example.com&amp;aid=99') !== false
     && strpos($local_rendered, 'action=rotating_ads_image&amp;aid=99') !== false,
     'site-relative ads should retain click and impression tracking'
 );
@@ -576,7 +576,7 @@ rotating_ads_test_assert(
     && strpos($rotating_ads_square, 'data-rotating-ads="1"') !== false
     && strpos($rotating_ads_square, 'data-rotating-ads-min="4"') !== false
     && strpos($rotating_ads_square, 'data-rotating-ads-max="8"') !== false
-    && strpos($rotating_ads_square, 'action=rotating_ads_click&amp;aid=') !== false
+    && strpos($rotating_ads_square, 'action=ra_click&amp;to=custom.example&amp;aid=') !== false
     && substr_count($rotating_ads_square, 'action=rotating_ads_image&amp;aid=') === 2
     && substr_count($rotating_ads_square, ' src="https://example.com/forum/misc.php?action=rotating_ads_image') === 1
     && substr_count($rotating_ads_square, ' data-src="https://example.com/forum/misc.php?action=rotating_ads_image') === 1,

@@ -99,7 +99,7 @@ By default, the plugin chooses one random ad for each slot on each page request.
 
 ## Metrics
 
-The manager displays lifetime image impressions, tracked clicks, and CTR for each ad. Image and destination requests pass through lightweight `misc.php` redirects so static, non-JavaScript views are included. Hidden rotating images are loaded only when shown. Metrics are aggregate operational totals: no visitor identity is stored, and the counts are not intended as billing-grade bot-filtered analytics.
+The manager displays lifetime image impressions, tracked clicks, and CTR for each ad. Image and destination requests pass through lightweight `misc.php` redirects so static, non-JavaScript views are included. Click URLs use the concise `ra_click` action and include a readable `to` hostname so visitors can see the destination domain before following the link. The server still resolves the destination from the ad ID, preventing URL tampering. Hidden rotating images are loaded only when shown. Metrics are aggregate operational totals: no visitor identity is stored, and the counts are not intended as billing-grade bot-filtered analytics.
 
 ## Uninstall
 
