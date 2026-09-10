@@ -4,6 +4,7 @@ define('IN_MYBB', 1);
 define('IN_ADMINCP', 1);
 define('MYBB_ROOT', __DIR__ . '/../');
 define('TIME_NOW', 1788912000);
+define('TABLE_PREFIX', 'mybb_');
 
 function rotating_ads_test_assert($condition, $message)
 {
@@ -45,8 +46,11 @@ class RotatingAdsTestQuery
 
 class RotatingAdsTestDatabase
 {
+    public $type = 'mysqli';
     public $group = array();
     public $settings = array();
+    public $ads = array();
+    public $ads_table_exists = false;
     public $themes = array(
         array('tid' => 2),
         array('tid' => 3),
@@ -54,8 +58,9 @@ class RotatingAdsTestDatabase
     public $stylesheets = array();
     private $next_setting_id = 1;
     private $next_stylesheet_id = 1;
+    private $next_ad_id = 1;
 
-    public function simple_select($table, $fields, $where, $options = array())
+    public function simple_select($table, $fields, $where = '', $options = array())
     {
         if ($table === 'settinggroups') {
             return new RotatingAdsTestQuery($this->group);
@@ -70,6 +75,31 @@ class RotatingAdsTestDatabase
 
         if ($table === 'themes') {
             return new RotatingAdsTestQuery($this->themes);
+        }
+
+        if ($table === 'rotating_ads') {
+            if (strpos($fields, 'COUNT(') !== false) {
+                return new RotatingAdsTestQuery(array(array('ads' => count($this->ads))));
+            }
+
+            $rows = array_values($this->ads);
+            if (preg_match("/slot='([^']+)'/", $where, $matches)) {
+                $slot = stripslashes($matches[1]);
+                $rows = array_values(array_filter($rows, function ($ad) use ($slot, $where) {
+                    return $ad['slot'] === $slot
+                        && (strpos($where, "enabled='1'") === false || !empty($ad['enabled']));
+                }));
+            } elseif (preg_match("/aid='([0-9]+)'/", $where, $matches)) {
+                $aid = (int)$matches[1];
+                $rows = isset($this->ads[$aid]) ? array($this->ads[$aid]) : array();
+            }
+
+            usort($rows, function ($left, $right) {
+                return array($left['slot'], $left['display_order'], $left['aid'])
+                    <=> array($right['slot'], $right['display_order'], $right['aid']);
+            });
+
+            return new RotatingAdsTestQuery($rows);
         }
 
         if ($table === 'themestylesheets') {
@@ -96,6 +126,12 @@ class RotatingAdsTestDatabase
         return $query->next();
     }
 
+    public function fetch_field($query, $field)
+    {
+        $row = $query->next();
+        return isset($row[$field]) ? $row[$field] : null;
+    }
+
     public function insert_query($table, $values)
     {
         if ($table === 'settinggroups') {
@@ -109,6 +145,12 @@ class RotatingAdsTestDatabase
             $this->stylesheets[$values['sid']] = $values;
 
             return $values['sid'];
+        }
+
+        if ($table === 'rotating_ads') {
+            $values['aid'] = $this->next_ad_id++;
+            $this->ads[$values['aid']] = $values;
+            return $values['aid'];
         }
 
         $values['sid'] = $this->next_setting_id++;
@@ -135,6 +177,15 @@ class RotatingAdsTestDatabase
             return;
         }
 
+        if ($table === 'rotating_ads') {
+            preg_match("/aid='([0-9]+)'/", $where, $matches);
+            $aid = isset($matches[1]) ? (int)$matches[1] : 0;
+            if (isset($this->ads[$aid])) {
+                $this->ads[$aid] = array_merge($this->ads[$aid], $values);
+            }
+            return;
+        }
+
         preg_match("/sid='([0-9]+)'/", $where, $matches);
         $sid = isset($matches[1]) ? (int)$matches[1] : 0;
 
@@ -153,7 +204,11 @@ class RotatingAdsTestDatabase
         }
 
         if ($table === 'settings') {
-            $this->settings = array();
+            if (strpos($where, 'rotating_ads_square_inventory') !== false) {
+                unset($this->settings['rotating_ads_square_inventory'], $this->settings['rotating_ads_banner_inventory']);
+            } else {
+                $this->settings = array();
+            }
         }
 
         if ($table === 'themestylesheets') {
@@ -161,11 +216,42 @@ class RotatingAdsTestDatabase
             $sid = isset($matches[1]) ? (int)$matches[1] : 0;
             unset($this->stylesheets[$sid]);
         }
+
+        if ($table === 'rotating_ads') {
+            preg_match("/aid='([0-9]+)'/", $where, $matches);
+            $aid = isset($matches[1]) ? (int)$matches[1] : 0;
+            unset($this->ads[$aid]);
+        }
     }
 
     public function escape_string($value)
     {
         return addslashes($value);
+    }
+
+    public function table_exists($table)
+    {
+        return $table === 'rotating_ads' && $this->ads_table_exists;
+    }
+
+    public function build_create_table_collation()
+    {
+        return '';
+    }
+
+    public function write_query($query)
+    {
+        if (strpos($query, 'mybb_rotating_ads') !== false) {
+            $this->ads_table_exists = true;
+        }
+    }
+
+    public function drop_table($table)
+    {
+        if ($table === 'rotating_ads') {
+            $this->ads_table_exists = false;
+            $this->ads = array();
+        }
     }
 }
 
@@ -216,6 +302,10 @@ function update_theme_stylesheet_list($tid)
 {
 }
 
+function change_admin_permission($module, $permission, $value = 1)
+{
+}
+
 $plugins = new RotatingAdsTestPlugins();
 $db = new RotatingAdsTestDatabase();
 $lang = new RotatingAdsTestLang();
@@ -246,14 +336,24 @@ rotating_ads_test_assert(
     'plugin should register the global_start hook'
 );
 rotating_ads_test_assert(
-    isset($plugins->hooks['admin_page_output_header'])
-    && $plugins->hooks['admin_page_output_header'] === 'rotating_ads_admin_settings_editor',
-    'plugin should register the Admin CP header hook for settings editor assets'
+    isset($plugins->hooks['admin_config_menu'])
+    && $plugins->hooks['admin_config_menu'] === 'rotating_ads_admin_menu'
+    && isset($plugins->hooks['admin_config_action_handler'])
+    && $plugins->hooks['admin_config_action_handler'] === 'rotating_ads_admin_action_handler',
+    'plugin should register a native Configuration management page'
+);
+$admin_actions = array();
+rotating_ads_admin_action_handler($admin_actions);
+rotating_ads_test_assert(
+    isset($admin_actions['rotating_ads'])
+    && $admin_actions['rotating_ads']['active'] === 'rotating_ads'
+    && $admin_actions['rotating_ads']['file'] === 'settings.php',
+    'native Admin CP route should resolve through the Configuration module'
 );
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.6.3',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.7.0',
     'plugin info should expose localized metadata and version'
 );
 
@@ -323,6 +423,18 @@ $mybb->settings['rotating_ads_enable_rotation'] = '0';
 $mybb->settings['rotating_ads_rotation_min_seconds'] = '15';
 $mybb->settings['rotating_ads_rotation_max_seconds'] = '30';
 
+$db->settings['rotating_ads_square_inventory'] = array(
+    'sid' => 90,
+    'name' => 'rotating_ads_square_inventory',
+    'value' => 'https://custom.example/ad.png|https://custom.example/|Custom|1'
+);
+$db->settings['rotating_ads_banner_inventory'] = array(
+    'sid' => 91,
+    'name' => 'rotating_ads_banner_inventory',
+    'value' => 'https://custom.example/banner.png|https://custom.example/banner|Banner|0'
+);
+rotating_ads_ensure_storage();
+rotating_ads_migrate_inventory_settings();
 rotating_ads_ensure_settings();
 rotating_ads_test_assert(
     isset($db->settings['rotating_ads_sponsor_label'])
@@ -335,18 +447,15 @@ rotating_ads_test_assert(
     'setting synchronization should create polish settings'
 );
 rotating_ads_test_assert(
-    $db->settings['rotating_ads_square_inventory']['value'] === '',
-    'fresh installs should not ship a site-specific default ad'
+    !isset($db->settings['rotating_ads_square_inventory'])
+    && !isset($db->settings['rotating_ads_banner_inventory'])
+    && count($db->ads) === 2
+    && $db->ads[1]['slot'] === 'square'
+    && $db->ads[2]['slot'] === 'banner'
+    && (int)$db->ads[2]['enabled'] === 0,
+    'legacy inventory settings should migrate to stable ad records and then be removed'
 );
 
-$db->settings['rotating_ads_square_inventory']['value'] = 'https://custom.example/ad.png|https://custom.example/|Custom|1';
-rotating_ads_ensure_settings();
-rotating_ads_test_assert(
-    $db->settings['rotating_ads_square_inventory']['value'] === 'https://custom.example/ad.png|https://custom.example/|Custom|1',
-    'setting synchronization should preserve existing inventory values'
-);
-
-$mybb->settings['rotating_ads_square_inventory'] = 'https://example.com/ad.jpg|https://example.com/|Example|1';
 rotating_ads_build_output();
 rotating_ads_test_assert(
     $rotating_ads_assets === ''
@@ -374,7 +483,14 @@ $mybb->settings['rotating_ads_enable_css'] = '1';
 $mybb->settings['rotating_ads_enable_rotation'] = '1';
 $mybb->settings['rotating_ads_rotation_min_seconds'] = '4';
 $mybb->settings['rotating_ads_rotation_max_seconds'] = '8';
-$mybb->settings['rotating_ads_square_inventory'] = $rotating_ads_multi_inventory;
+$db->insert_query('rotating_ads', rotating_ads_prepare_ad_for_database(array(
+    'slot' => 'square',
+    'image_url' => 'https://example.com/ad-2.jpg',
+    'destination_url' => 'https://example.com/2',
+    'alt_text' => 'Two',
+    'enabled' => 1,
+    'display_order' => 2
+)));
 rotating_ads_build_output();
 rotating_ads_test_assert(
     strpos($rotating_ads_assets, '/jscripts/rotating-ads.js?ver=060') !== false

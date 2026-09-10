@@ -43,19 +43,9 @@ The plugin does not impose either slot on a theme. Administrators place `{$rotat
 
 ## Configuration
 
-The plugin creates separate `Square Ads` and `Banner Ads` settings. Fresh installs start with both inventories blank so the package does not ship a site-specific advertisement. Admin CP displays these as editable rows. Without JavaScript, the settings fall back to one ad per line:
+Manage individual ads in **Admin CP -> Configuration -> Rotating Ads**. Use **Add ad** to create a square or banner ad, then edit, disable, reorder, or delete it from the native MyBB management table. Existing pipe-delimited inventories from versions before 0.7.0 are imported when the plugin is activated.
 
-```text
-image URL|destination URL|alt text|enabled
-```
-
-Example:
-
-```text
-https://example.com/ad-square.jpg|https://example.com/|Example sponsor|1
-```
-
-Set enabled to `1` or `0`. Blank lines and lines beginning with `#` are ignored.
+General display and timing options remain under **Configuration -> Settings -> Rotating Ads**.
 
 Additional settings:
 

@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.6.3',
+        'version' => '0.7.0',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -33,6 +33,7 @@ function rotating_ads_info()
 
 function rotating_ads_install()
 {
+    rotating_ads_ensure_storage();
     rotating_ads_ensure_settings();
 }
 
@@ -61,12 +62,22 @@ function rotating_ads_uninstall()
         $db->delete_query('settinggroups', "gid='{$gid}'");
         rotating_ads_rebuild_settings();
     }
+
+    if ($db->table_exists('rotating_ads')) {
+        $db->drop_table('rotating_ads');
+    }
 }
 
 function rotating_ads_activate()
 {
+    rotating_ads_ensure_storage();
+    rotating_ads_migrate_inventory_settings();
     rotating_ads_ensure_settings();
     rotating_ads_refresh_stylesheets();
+
+    if (function_exists('change_admin_permission')) {
+        change_admin_permission('config', 'rotating_ads');
+    }
 
     require_once MYBB_ROOT . 'inc/adminfunctions_templates.php';
 
@@ -82,9 +93,99 @@ function rotating_ads_activate()
     );
 }
 
+function rotating_ads_ensure_storage()
+{
+    global $db;
+
+    if ($db->table_exists('rotating_ads')) {
+        return;
+    }
+
+    $collation = $db->build_create_table_collation();
+
+    switch ($db->type) {
+        case 'pgsql':
+            $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
+                aid serial,
+                slot varchar(10) NOT NULL default 'square',
+                image_url varchar(500) NOT NULL default '',
+                destination_url varchar(500) NOT NULL default '',
+                alt_text varchar(255) NOT NULL default '',
+                enabled smallint NOT NULL default '1',
+                display_order integer NOT NULL default '0',
+                PRIMARY KEY (aid)
+            )");
+            break;
+        case 'sqlite':
+            $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
+                aid INTEGER PRIMARY KEY,
+                slot varchar(10) NOT NULL default 'square',
+                image_url varchar(500) NOT NULL default '',
+                destination_url varchar(500) NOT NULL default '',
+                alt_text varchar(255) NOT NULL default '',
+                enabled tinyint(1) NOT NULL default '1',
+                display_order int NOT NULL default '0'
+            )");
+            break;
+        default:
+            $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
+                aid int unsigned NOT NULL auto_increment,
+                slot varchar(10) NOT NULL default 'square',
+                image_url varchar(500) NOT NULL default '',
+                destination_url varchar(500) NOT NULL default '',
+                alt_text varchar(255) NOT NULL default '',
+                enabled tinyint(1) NOT NULL default '1',
+                display_order int NOT NULL default '0',
+                PRIMARY KEY (aid),
+                KEY slot_enabled (slot, enabled, display_order)
+            ) ENGINE=MyISAM{$collation}");
+            break;
+    }
+}
+
+function rotating_ads_migrate_inventory_settings()
+{
+    global $db;
+
+    if (!$db->table_exists('rotating_ads')) {
+        return;
+    }
+
+    $count_query = $db->simple_select('rotating_ads', 'COUNT(aid) AS ads');
+    $count = $db->fetch_field($count_query, 'ads');
+    if ((int)$count > 0) {
+        return;
+    }
+
+    $legacy_settings = array(
+        'rotating_ads_square_inventory' => 'square',
+        'rotating_ads_banner_inventory' => 'banner'
+    );
+
+    foreach ($legacy_settings as $setting_name => $slot) {
+        $query = $db->simple_select(
+            'settings',
+            'value',
+            "name='" . $db->escape_string($setting_name) . "'",
+            array('limit' => 1)
+        );
+        $setting = $db->fetch_array($query);
+
+        foreach (rotating_ads_parse_inventory_records(isset($setting['value']) ? $setting['value'] : '') as $order => $ad) {
+            $ad['slot'] = $slot;
+            $ad['display_order'] = $order + 1;
+            $db->insert_query('rotating_ads', rotating_ads_prepare_ad_for_database($ad));
+        }
+    }
+}
+
 function rotating_ads_deactivate()
 {
     rotating_ads_remove_stylesheets();
+
+    if (function_exists('change_admin_permission')) {
+        change_admin_permission('config', 'rotating_ads', -1);
+    }
 
     require_once MYBB_ROOT . 'inc/adminfunctions_templates.php';
 
@@ -110,7 +211,7 @@ function rotating_ads_ensure_settings()
         $gid = (int)$group['gid'];
         $db->update_query('settinggroups', array(
             'title' => rotating_ads_lang('rotating_ads_name', 'Rotating Ads'),
-            'description' => rotating_ads_lang('rotating_ads_settings_description', 'Settings for square and banner advertisement inventories.'),
+            'description' => rotating_ads_lang('rotating_ads_settings_description', 'General display and rotation settings. Manage individual ads from Configuration > Rotating Ads.'),
             'disporder' => 1,
             'isdefault' => 0
         ), "gid='{$gid}'");
@@ -118,7 +219,7 @@ function rotating_ads_ensure_settings()
         $gid = (int)$db->insert_query('settinggroups', array(
             'name' => 'rotating_ads',
             'title' => rotating_ads_lang('rotating_ads_name', 'Rotating Ads'),
-            'description' => rotating_ads_lang('rotating_ads_settings_description', 'Settings for square and banner advertisement inventories.'),
+            'description' => rotating_ads_lang('rotating_ads_settings_description', 'General display and rotation settings. Manage individual ads from Configuration > Rotating Ads.'),
             'disporder' => 1,
             'isdefault' => 0
         ));
@@ -126,30 +227,12 @@ function rotating_ads_ensure_settings()
 
     $settings = array(
         array(
-            'name' => 'rotating_ads_square_inventory',
-            'title' => rotating_ads_lang('rotating_ads_square_inventory', 'Square Ads'),
-            'description' => rotating_ads_lang('rotating_ads_inventory_description', 'One ad per line: image URL|destination URL|alt text|enabled.'),
-            'optionscode' => 'textarea',
-            'value' => '',
-            'disporder' => 1,
-            'gid' => $gid
-        ),
-        array(
-            'name' => 'rotating_ads_banner_inventory',
-            'title' => rotating_ads_lang('rotating_ads_banner_inventory', 'Banner Ads'),
-            'description' => rotating_ads_lang('rotating_ads_inventory_description', 'One ad per line: image URL|destination URL|alt text|enabled.'),
-            'optionscode' => 'textarea',
-            'value' => '',
-            'disporder' => 2,
-            'gid' => $gid
-        ),
-        array(
             'name' => 'rotating_ads_sponsor_label',
             'title' => rotating_ads_lang('rotating_ads_sponsor_label', 'Sponsor label'),
             'description' => rotating_ads_lang('rotating_ads_sponsor_label_description', 'Optional label displayed above each ad. Leave blank to hide the label.'),
             'optionscode' => 'text',
             'value' => rotating_ads_lang('rotating_ads_default_sponsor_label', 'Sponsored'),
-            'disporder' => 3,
+            'disporder' => 1,
             'gid' => $gid
         ),
         array(
@@ -158,7 +241,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_hidden_groups_description', 'Comma-separated primary or additional usergroup IDs that should not see rotating ads. Leave blank to show ads to all groups.'),
             'optionscode' => 'text',
             'value' => '',
-            'disporder' => 4,
+            'disporder' => 2,
             'gid' => $gid
         ),
         array(
@@ -167,7 +250,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_enable_css_description', 'Load the small default stylesheet. Disable this if your theme provides its own ad styling.'),
             'optionscode' => 'yesno',
             'value' => '1',
-            'disporder' => 5,
+            'disporder' => 3,
             'gid' => $gid
         ),
         array(
@@ -176,7 +259,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_open_new_tab_description', 'Open advertisement links in a new browser tab.'),
             'optionscode' => 'yesno',
             'value' => '1',
-            'disporder' => 6,
+            'disporder' => 4,
             'gid' => $gid
         ),
         array(
@@ -185,7 +268,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_enable_rotation_description', 'Cycle through enabled ads without requiring a page reload. Requires JavaScript; visitors without JavaScript keep the normal static output. Slots with fewer than two enabled ads also stay static.'),
             'optionscode' => 'yesno',
             'value' => '0',
-            'disporder' => 7,
+            'disporder' => 5,
             'gid' => $gid
         ),
         array(
@@ -194,7 +277,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_rotation_min_seconds_description', 'Minimum seconds an ad remains visible before the next rotation.'),
             'optionscode' => 'numeric',
             'value' => '15',
-            'disporder' => 8,
+            'disporder' => 6,
             'gid' => $gid
         ),
         array(
@@ -203,7 +286,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_rotation_max_seconds_description', 'Maximum seconds an ad remains visible before the next rotation. Values below the minimum are treated as the minimum.'),
             'optionscode' => 'numeric',
             'value' => '30',
-            'disporder' => 9,
+            'disporder' => 7,
             'gid' => $gid
         )
     );
@@ -219,6 +302,11 @@ function rotating_ads_ensure_settings()
             $db->update_query('settings', $setting, "sid='" . (int)$existing['sid'] . "'");
         }
     }
+
+    $db->delete_query(
+        'settings',
+        "name IN ('rotating_ads_square_inventory', 'rotating_ads_banner_inventory')"
+    );
 
     rotating_ads_rebuild_settings();
 }
@@ -236,12 +324,8 @@ function rotating_ads_build_output()
         return;
     }
 
-    $square_ads = rotating_ads_parse_inventory(isset($mybb->settings['rotating_ads_square_inventory'])
-        ? $mybb->settings['rotating_ads_square_inventory']
-        : '');
-    $banner_ads = rotating_ads_parse_inventory(isset($mybb->settings['rotating_ads_banner_inventory'])
-        ? $mybb->settings['rotating_ads_banner_inventory']
-        : '');
+    $square_ads = rotating_ads_get_ads('square');
+    $banner_ads = rotating_ads_get_ads('banner');
     $label = isset($mybb->settings['rotating_ads_sponsor_label'])
         ? trim((string)$mybb->settings['rotating_ads_sponsor_label'])
         : rotating_ads_lang('rotating_ads_default_sponsor_label', 'Sponsored');
@@ -259,7 +343,54 @@ function rotating_ads_build_output()
     $rotating_ads_banner = rotating_ads_render_slot('banner', $banner_ads, $label, $open_new_tab, $rotation_options);
 }
 
+function rotating_ads_get_ads($slot)
+{
+    global $db;
+
+    $ads = array();
+    if (!$db->table_exists('rotating_ads')) {
+        return $ads;
+    }
+
+    $slot = $slot === 'banner' ? 'banner' : 'square';
+    $query = $db->simple_select(
+        'rotating_ads',
+        'aid, image_url, destination_url, alt_text',
+        "slot='" . $db->escape_string($slot) . "' AND enabled='1'",
+        array('order_by' => 'display_order, aid', 'order_dir' => 'ASC')
+    );
+
+    while ($ad = $db->fetch_array($query)) {
+        if (!preg_match('#^https?://#i', $ad['image_url']) || !preg_match('#^https?://#i', $ad['destination_url'])) {
+            continue;
+        }
+
+        $ads[] = $ad;
+    }
+
+    return $ads;
+}
+
 function rotating_ads_parse_inventory($value)
+{
+    $ads = array();
+
+    foreach (rotating_ads_parse_inventory_records($value) as $ad) {
+        if (!$ad['enabled']) {
+            continue;
+        }
+
+        $ads[] = array(
+            'image_url' => $ad['image_url'],
+            'destination_url' => $ad['destination_url'],
+            'alt_text' => $ad['alt_text']
+        );
+    }
+
+    return $ads;
+}
+
+function rotating_ads_parse_inventory_records($value)
 {
     $ads = array();
     $lines = preg_split('/\r\n|\r|\n/', trim((string)$value));
@@ -273,21 +404,34 @@ function rotating_ads_parse_inventory($value)
         $parts = array_map('trim', explode('|', $line, 4));
         $image_url = isset($parts[0]) ? $parts[0] : '';
         $destination_url = isset($parts[1]) ? $parts[1] : '';
-        $alt_text = isset($parts[2]) ? $parts[2] : '';
-        $enabled = !isset($parts[3]) || (int)$parts[3] === 1;
 
-        if (!preg_match('#^https?://#i', $image_url) || !preg_match('#^https?://#i', $destination_url) || !$enabled) {
+        if (!preg_match('#^https?://#i', $image_url) || !preg_match('#^https?://#i', $destination_url)) {
             continue;
         }
 
         $ads[] = array(
             'image_url' => $image_url,
             'destination_url' => $destination_url,
-            'alt_text' => $alt_text
+            'alt_text' => isset($parts[2]) ? $parts[2] : '',
+            'enabled' => !isset($parts[3]) || (int)$parts[3] === 1
         );
     }
 
     return $ads;
+}
+
+function rotating_ads_prepare_ad_for_database($ad)
+{
+    global $db;
+
+    return array(
+        'slot' => $db->escape_string($ad['slot'] === 'banner' ? 'banner' : 'square'),
+        'image_url' => $db->escape_string(trim((string)$ad['image_url'])),
+        'destination_url' => $db->escape_string(trim((string)$ad['destination_url'])),
+        'alt_text' => $db->escape_string(trim((string)$ad['alt_text'])),
+        'enabled' => empty($ad['enabled']) ? 0 : 1,
+        'display_order' => max(0, (int)$ad['display_order'])
+    );
 }
 
 function rotating_ads_render_slot($format, $ads, $label = 'Sponsored', $open_new_tab = true, $rotation_options = array())
@@ -553,303 +697,266 @@ function rotating_ads_remove_stylesheets()
 }
 
 if (defined('IN_ADMINCP')) {
-    $plugins->add_hook('admin_load', 'rotating_ads_admin_settings_editor');
-    $plugins->add_hook('admin_page_output_header', 'rotating_ads_admin_settings_editor');
-    $plugins->add_hook('admin_config_settings_start', 'rotating_ads_admin_settings_editor');
+    $plugins->add_hook('admin_config_action_handler', 'rotating_ads_admin_action_handler');
+    $plugins->add_hook('admin_config_menu', 'rotating_ads_admin_menu');
+    $plugins->add_hook('admin_config_permissions', 'rotating_ads_admin_permissions');
+    $plugins->add_hook('admin_load', 'rotating_ads_admin_page');
     $plugins->add_hook('admin_style_themes_add_commit', 'rotating_ads_refresh_stylesheets');
     $plugins->add_hook('admin_style_themes_import_commit', 'rotating_ads_refresh_stylesheets');
     $plugins->add_hook('admin_style_themes_duplicate_commit', 'rotating_ads_refresh_stylesheets');
     $plugins->add_hook('admin_config_settings_change', 'rotating_ads_refresh_stylesheets');
-    $plugins->add_hook('admin_config_settings_change', 'rotating_ads_admin_settings_editor');
 }
 
-function rotating_ads_admin_settings_editor()
+function rotating_ads_admin_action_handler(&$actions)
 {
-    global $mybb, $page, $db;
+    $actions['rotating_ads'] = array(
+        'active' => 'rotating_ads',
+        'file' => 'settings.php'
+    );
+}
 
-    static $injected = false;
+function rotating_ads_admin_menu(&$sub_menu)
+{
+    global $lang;
 
-    if ($injected) {
+    $lang->load('rotating_ads');
+    $sub_menu['185'] = array(
+        'id' => 'rotating_ads',
+        'title' => rotating_ads_lang('rotating_ads_manage_ads', 'Rotating Ads'),
+        'link' => 'index.php?module=config-rotating_ads'
+    );
+}
+
+function rotating_ads_admin_permissions(&$admin_permissions)
+{
+    global $lang;
+
+    $lang->load('rotating_ads');
+    $admin_permissions['rotating_ads'] = rotating_ads_lang('rotating_ads_can_manage_ads', 'Can manage rotating ads?');
+}
+
+function rotating_ads_admin_page()
+{
+    global $mybb, $page, $db, $lang;
+
+    if (!$db->table_exists('rotating_ads')) {
+        rotating_ads_ensure_storage();
+        rotating_ads_migrate_inventory_settings();
+        rotating_ads_ensure_settings();
+    }
+
+    if (!isset($page) || $page->active_action !== 'rotating_ads') {
         return;
     }
 
-    if (!isset($page) || !isset($db)) {
-        return;
-    }
+    $lang->load('rotating_ads');
 
-    $query = $db->simple_select('settinggroups', 'gid', "name='rotating_ads'", array('limit' => 1));
-    $group = $db->fetch_array($query);
+    $action = isset($mybb->input['action']) ? $mybb->input['action'] : '';
+    $aid = isset($mybb->input['aid']) ? (int)$mybb->input['aid'] : 0;
 
-    if (empty($group['gid']) || (int)$mybb->get_input('gid') !== (int)$group['gid']) {
-        return;
-    }
-
-    $injected = true;
-
-    $strings = rotating_ads_admin_editor_strings();
-    $strings_json = json_encode($strings);
-    if ($strings_json === false) {
-        $strings_json = '{}';
-    }
-    $strings_json = str_replace(array('<', '>', '&'), array('\u003C', '\u003E', '\u0026'), $strings_json);
-
-    $page->extra_header .= '<style type="text/css">
-.rotating-ads-editor {
-    max-width: 980px;
-    margin-top: 8px;
-}
-
-.rotating-ads-editor__table {
-    width: 100%;
-    border-collapse: collapse;
-    border: 1px solid #ccc;
-    background: #fff;
-}
-
-.rotating-ads-editor__table th,
-.rotating-ads-editor__table td {
-    padding: 7px;
-    border: 1px solid #ddd;
-    vertical-align: top;
-}
-
-.rotating-ads-editor__table th {
-    background: #f5f5f5;
-    text-align: left;
-}
-
-.rotating-ads-editor__table input[type="text"] {
-    box-sizing: border-box;
-    width: 100%;
-}
-
-.rotating-ads-editor__enabled {
-    text-align: center;
-    white-space: nowrap;
-}
-
-.rotating-ads-editor__actions {
-    margin-top: 8px;
-}
-
-.rotating-ads-editor__fallback {
-    margin-top: 8px;
-}
-
-.rotating-ads-editor--enhanced .rotating-ads-editor__fallback {
-    display: none;
-}
-</style>';
-
-    $page->extra_header .= '<script type="text/javascript">
-window.rotatingAdsEditorLanguage = ' . $strings_json . ';
-(function(w, d) {
-    "use strict";
-
-    var language = w.rotatingAdsEditorLanguage || {};
-    var fields = [
-        {name: "rotating_ads_square_inventory", label: language.squareAds || "Square Ads"},
-        {name: "rotating_ads_banner_inventory", label: language.bannerAds || "Banner Ads"}
-    ];
-
-    function text(key, fallback) {
-        return language[key] || fallback;
-    }
-
-    function escapeSelector(value) {
-        if (w.CSS && typeof w.CSS.escape === "function") {
-            return w.CSS.escape(value);
+    if ($action === 'delete') {
+        $query = $db->simple_select('rotating_ads', 'aid, alt_text', "aid='{$aid}'", array('limit' => 1));
+        $ad = $db->fetch_array($query);
+        if (empty($ad['aid'])) {
+            flash_message(rotating_ads_lang('rotating_ads_not_found', 'The selected ad could not be found.'), 'error');
+            admin_redirect('index.php?module=config-rotating_ads');
         }
 
-        return value.replace(/"/g, "\\\"");
-    }
-
-    function findField(name) {
-        return d.querySelector("textarea[name=\"upsetting[" + escapeSelector(name) + "]\"]");
-    }
-
-    function findInput(name) {
-        return d.querySelector("input[name=\"upsetting[" + escapeSelector(name) + "]\"]");
-    }
-
-    function parseRows(value) {
-        var rows = [];
-        var lines = String(value || "").split(/\r\n|\r|\n/);
-
-        lines.forEach(function(line) {
-            line = line.trim();
-            if (!line || line.charAt(0) === "#") {
-                return;
-            }
-
-            var parts = line.split("|");
-            rows.push({
-                image: (parts.shift() || "").trim(),
-                url: (parts.shift() || "").trim(),
-                alt: parts.length > 1 ? parts.slice(0, -1).join("|").trim() : (parts.shift() || "").trim(),
-                enabled: parts.length ? parts.pop().trim() !== "0" : true
-            });
-        });
-
-        return rows;
-    }
-
-    function serializeRows(editor) {
-        var lines = [];
-        editor.querySelectorAll("tbody tr").forEach(function(row) {
-            var image = row.querySelector("[data-ad-field=\"image\"]").value.trim();
-            var url = row.querySelector("[data-ad-field=\"url\"]").value.trim();
-            var alt = row.querySelector("[data-ad-field=\"alt\"]").value.trim().replace(/\|/g, "/");
-            var enabled = row.querySelector("[data-ad-field=\"enabled\"]").checked ? "1" : "0";
-
-            if (image || url || alt) {
-                lines.push([image, url, alt, enabled].join("|"));
-            }
-        });
-
-        return lines.join("\n");
-    }
-
-    function makeInput(field, value) {
-        var input = d.createElement("input");
-        input.type = "text";
-        input.value = value || "";
-        input.setAttribute("data-ad-field", field);
-        return input;
-    }
-
-    function addRow(editor, data) {
-        var tbody = editor.querySelector("tbody");
-        var row = d.createElement("tr");
-        data = data || {};
-
-        ["image", "url", "alt"].forEach(function(field) {
-            var cell = d.createElement("td");
-            cell.appendChild(makeInput(field, data[field]));
-            row.appendChild(cell);
-        });
-
-        var enabledCell = d.createElement("td");
-        enabledCell.className = "rotating-ads-editor__enabled";
-        var enabled = d.createElement("input");
-        enabled.type = "checkbox";
-        enabled.checked = data.enabled !== false;
-        enabled.setAttribute("data-ad-field", "enabled");
-        enabledCell.appendChild(enabled);
-        row.appendChild(enabledCell);
-
-        var actionCell = d.createElement("td");
-        var remove = d.createElement("button");
-        remove.type = "button";
-        remove.className = "button";
-        remove.textContent = text("remove", "Remove");
-        remove.addEventListener("click", function() {
-            row.parentNode.removeChild(row);
-        });
-        actionCell.appendChild(remove);
-        row.appendChild(actionCell);
-
-        tbody.appendChild(row);
-    }
-
-    function buildEditor(textarea, config) {
-        var wrapper = d.createElement("div");
-        wrapper.className = "rotating-ads-editor rotating-ads-editor--enhanced";
-        wrapper.innerHTML =
-            "<table class=\"rotating-ads-editor__table\">" +
-            "<thead><tr>" +
-            "<th>" + text("imageUrl", "Image URL") + "</th>" +
-            "<th>" + text("destinationUrl", "Destination URL") + "</th>" +
-            "<th>" + text("altText", "Alt text") + "</th>" +
-            "<th>" + text("enabled", "Enabled") + "</th>" +
-            "<th>" + text("actions", "Actions") + "</th>" +
-            "</tr></thead><tbody></tbody></table>" +
-            "<div class=\"rotating-ads-editor__actions\"></div>" +
-            "<div class=\"rotating-ads-editor__fallback\"></div>";
-
-        var actions = wrapper.querySelector(".rotating-ads-editor__actions");
-        var add = d.createElement("button");
-        add.type = "button";
-        add.className = "button";
-        add.textContent = text("addAd", "Add ad");
-        add.addEventListener("click", function() {
-            addRow(wrapper, {});
-        });
-        actions.appendChild(add);
-
-        parseRows(textarea.value).forEach(function(row) {
-            addRow(wrapper, row);
-        });
-
-        if (!wrapper.querySelector("tbody tr")) {
-            addRow(wrapper, {});
+        if ($mybb->request_method === 'post') {
+            verify_post_check($mybb->get_input('my_post_key'));
+            $db->delete_query('rotating_ads', "aid='{$aid}'", 1);
+            flash_message(rotating_ads_lang('rotating_ads_deleted', 'The ad was deleted.'), 'success');
+            admin_redirect('index.php?module=config-rotating_ads');
         }
 
-        textarea.parentNode.insertBefore(wrapper, textarea);
-        wrapper.querySelector(".rotating-ads-editor__fallback").appendChild(textarea);
-
-        var form = textarea.form;
-        if (form) {
-            form.addEventListener("submit", function() {
-                textarea.value = serializeRows(wrapper);
-            });
-        }
+        $page->output_confirm_action(
+            'index.php?module=config-rotating_ads&amp;action=delete&amp;aid=' . $aid,
+            rotating_ads_lang('rotating_ads_delete_confirm', 'Delete this ad?'),
+            rotating_ads_lang('rotating_ads_delete_ad', 'Delete ad')
+        );
+        exit;
     }
 
-    function setupTimingValidation() {
-        var min = findInput("rotating_ads_rotation_min_seconds");
-        var max = findInput("rotating_ads_rotation_max_seconds");
-
-        if (!min || !max) {
-            return;
-        }
-
-        function normalize() {
-            var minValue = Math.max(1, parseInt(min.value, 10) || 1);
-            var maxValue = Math.max(1, parseInt(max.value, 10) || minValue);
-
-            if (maxValue < minValue) {
-                maxValue = minValue;
-            }
-
-            min.value = minValue;
-            max.value = maxValue;
-        }
-
-        min.addEventListener("change", normalize);
-        max.addEventListener("change", normalize);
-
-        if (min.form) {
-            min.form.addEventListener("submit", normalize);
-        }
+    if ($action === 'add' || $action === 'edit') {
+        rotating_ads_admin_form($action, $aid);
+        exit;
     }
 
-    d.addEventListener("DOMContentLoaded", function() {
-        fields.forEach(function(config) {
-            var textarea = findField(config.name);
-            if (textarea) {
-                buildEditor(textarea, config);
-            }
-        });
-        setupTimingValidation();
-    });
-}(window, document));
-</script>';
+    $page->add_breadcrumb_item(rotating_ads_lang('rotating_ads_manage_ads', 'Rotating Ads'));
+    $page->output_header(rotating_ads_lang('rotating_ads_manage_ads', 'Rotating Ads'));
+
+    $sub_tabs = rotating_ads_admin_tabs();
+    $page->output_nav_tabs($sub_tabs, 'rotating_ads');
+
+    $table = new Table;
+    $table->construct_header(rotating_ads_lang('rotating_ads_ad', 'Ad'));
+    $table->construct_header(rotating_ads_lang('rotating_ads_slot', 'Slot'), array('width' => '100'));
+    $table->construct_header(rotating_ads_lang('rotating_ads_status', 'Status'), array('width' => '90', 'class' => 'align_center'));
+    $table->construct_header(rotating_ads_lang('rotating_ads_order', 'Order'), array('width' => '70', 'class' => 'align_center'));
+    $table->construct_header($lang->controls, array('width' => '100', 'class' => 'align_center'));
+
+    $query = $db->simple_select('rotating_ads', '*', '', array('order_by' => 'slot, display_order, aid', 'order_dir' => 'ASC'));
+    $has_ads = false;
+    while ($ad = $db->fetch_array($query)) {
+        $has_ads = true;
+        $aid = (int)$ad['aid'];
+        $name = trim($ad['alt_text']) !== '' ? $ad['alt_text'] : $ad['image_url'];
+        $edit_url = 'index.php?module=config-rotating_ads&amp;action=edit&amp;aid=' . $aid;
+
+        $table->construct_cell('<strong><a href="' . $edit_url . '">' . htmlspecialchars_uni($name) . '</a></strong><br /><small>' . htmlspecialchars_uni($ad['destination_url']) . '</small>');
+        $table->construct_cell(ucfirst(htmlspecialchars_uni($ad['slot'])));
+        $table->construct_cell(!empty($ad['enabled']) ? $lang->yes : $lang->no, array('class' => 'align_center'));
+        $table->construct_cell((int)$ad['display_order'], array('class' => 'align_center'));
+
+        $popup = new PopupMenu('rotating_ad_' . $aid, $lang->options);
+        $popup->add_item($lang->edit, $edit_url);
+        $popup->add_item(
+            $lang->delete,
+            'index.php?module=config-rotating_ads&amp;action=delete&amp;aid=' . $aid
+        );
+        $table->construct_cell($popup->fetch(), array('class' => 'align_center'));
+        $table->construct_row();
+    }
+
+    if (!$has_ads) {
+        $table->construct_cell(rotating_ads_lang('rotating_ads_no_ads', 'No ads have been added yet.'), array('colspan' => 5));
+        $table->construct_row();
+    }
+
+    $table->output(rotating_ads_lang('rotating_ads_manage_ads', 'Rotating Ads'));
+    $page->output_footer();
+    exit;
 }
 
-function rotating_ads_admin_editor_strings()
+function rotating_ads_admin_tabs()
 {
     return array(
-        'squareAds' => rotating_ads_lang('rotating_ads_square_inventory', 'Square Ads'),
-        'bannerAds' => rotating_ads_lang('rotating_ads_banner_inventory', 'Banner Ads'),
-        'imageUrl' => rotating_ads_lang('rotating_ads_editor_image_url', 'Image URL'),
-        'destinationUrl' => rotating_ads_lang('rotating_ads_editor_destination_url', 'Destination URL'),
-        'altText' => rotating_ads_lang('rotating_ads_editor_alt_text', 'Alt text'),
-        'enabled' => rotating_ads_lang('rotating_ads_editor_enabled', 'Enabled'),
-        'actions' => rotating_ads_lang('rotating_ads_editor_actions', 'Actions'),
-        'addAd' => rotating_ads_lang('rotating_ads_editor_add_ad', 'Add ad'),
-        'remove' => rotating_ads_lang('rotating_ads_editor_remove', 'Remove')
+        'rotating_ads' => array(
+            'title' => rotating_ads_lang('rotating_ads_manage_ads', 'Manage ads'),
+            'link' => 'index.php?module=config-rotating_ads',
+            'description' => rotating_ads_lang('rotating_ads_manage_ads_description', 'Manage square and banner ads.')
+        ),
+        'rotating_ads_add' => array(
+            'title' => rotating_ads_lang('rotating_ads_add_ad', 'Add ad'),
+            'link' => 'index.php?module=config-rotating_ads&amp;action=add',
+            'description' => rotating_ads_lang('rotating_ads_add_ad_description', 'Add a square or banner ad.')
+        )
     );
+}
+
+function rotating_ads_admin_form($action, $aid = 0)
+{
+    global $mybb, $page, $db, $lang;
+
+    $editing = $action === 'edit';
+    $ad = array(
+        'slot' => 'square',
+        'image_url' => '',
+        'destination_url' => '',
+        'alt_text' => '',
+        'enabled' => 1,
+        'display_order' => 0
+    );
+
+    if ($editing) {
+        $query = $db->simple_select('rotating_ads', '*', "aid='" . (int)$aid . "'", array('limit' => 1));
+        $ad = $db->fetch_array($query);
+        if (empty($ad['aid'])) {
+            flash_message(rotating_ads_lang('rotating_ads_not_found', 'The selected ad could not be found.'), 'error');
+            admin_redirect('index.php?module=config-rotating_ads');
+        }
+    }
+
+    $errors = array();
+    if ($mybb->request_method === 'post') {
+        verify_post_check($mybb->get_input('my_post_key'));
+        $ad = array(
+            'slot' => $mybb->get_input('slot') === 'banner' ? 'banner' : 'square',
+            'image_url' => trim($mybb->get_input('image_url')),
+            'destination_url' => trim($mybb->get_input('destination_url')),
+            'alt_text' => trim($mybb->get_input('alt_text')),
+            'enabled' => $mybb->get_input('enabled') ? 1 : 0,
+            'display_order' => max(0, (int)$mybb->get_input('display_order'))
+        );
+
+        if (!preg_match('#^https?://#i', $ad['image_url'])) {
+            $errors[] = rotating_ads_lang('rotating_ads_invalid_image_url', 'Enter a valid HTTP(S) image URL.');
+        }
+        if (!preg_match('#^https?://#i', $ad['destination_url'])) {
+            $errors[] = rotating_ads_lang('rotating_ads_invalid_destination_url', 'Enter a valid HTTP(S) destination URL.');
+        }
+
+        if (empty($errors)) {
+            $data = rotating_ads_prepare_ad_for_database($ad);
+            if ($editing) {
+                $db->update_query('rotating_ads', $data, "aid='" . (int)$aid . "'", 1);
+                $message = rotating_ads_lang('rotating_ads_updated', 'The ad was updated.');
+            } else {
+                $aid = (int)$db->insert_query('rotating_ads', $data);
+                $message = rotating_ads_lang('rotating_ads_added', 'The ad was added.');
+            }
+
+            flash_message($message, 'success');
+            admin_redirect('index.php?module=config-rotating_ads&amp;highlight=' . $aid);
+        }
+    }
+
+    $title = $editing
+        ? rotating_ads_lang('rotating_ads_edit_ad', 'Edit ad')
+        : rotating_ads_lang('rotating_ads_add_ad', 'Add ad');
+    $page->add_breadcrumb_item(rotating_ads_lang('rotating_ads_manage_ads', 'Rotating Ads'), 'index.php?module=config-rotating_ads');
+    $page->add_breadcrumb_item($title);
+    $page->output_header($title);
+    $page->output_nav_tabs(rotating_ads_admin_tabs(), $editing ? 'rotating_ads' : 'rotating_ads_add');
+
+    if (!empty($errors)) {
+        $page->output_inline_error($errors);
+    }
+
+    $form = new Form(
+        'index.php?module=config-rotating_ads&amp;action=' . $action . ($editing ? '&amp;aid=' . (int)$aid : ''),
+        'post',
+        'rotating_ads'
+    );
+    $container = new FormContainer($title);
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_slot', 'Slot'),
+        rotating_ads_lang('rotating_ads_slot_description', 'Choose where this ad can appear.'),
+        $form->generate_select_box('slot', array('square' => 'Square', 'banner' => 'Banner'), $ad['slot'])
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_image_url', 'Image URL'),
+        '',
+        $form->generate_text_box('image_url', $ad['image_url'], array('id' => 'image_url')),
+        'image_url'
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_destination_url', 'Destination URL'),
+        '',
+        $form->generate_text_box('destination_url', $ad['destination_url'], array('id' => 'destination_url')),
+        'destination_url'
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_alt_text', 'Alt text'),
+        rotating_ads_lang('rotating_ads_alt_text_description', 'Describe the advertisement image for accessibility.'),
+        $form->generate_text_box('alt_text', $ad['alt_text'], array('id' => 'alt_text')),
+        'alt_text'
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_order', 'Order'),
+        rotating_ads_lang('rotating_ads_order_description', 'Lower numbers appear first in the manager and rotation sequence.'),
+        $form->generate_numeric_field('display_order', (int)$ad['display_order'], array('min' => 0))
+    );
+    $container->output_row(
+        rotating_ads_lang('rotating_ads_status', 'Status'),
+        '',
+        $form->generate_check_box('enabled', 1, rotating_ads_lang('rotating_ads_enabled', 'Enabled'), array('checked' => !empty($ad['enabled'])))
+    );
+    $container->end();
+    $buttons = array($form->generate_submit_button($lang->save_changes));
+    $form->output_submit_wrapper($buttons);
+    $form->end();
+    $page->output_footer();
 }
 
 function rotating_ads_current_user_hidden()

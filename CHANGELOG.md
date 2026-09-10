@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 - 2026-09-10
+
+- Replaced the pipe-delimited Admin CP inventory textareas with a native MyBB ad manager under Configuration > Rotating Ads.
+- Added database-backed ad records with stable IDs, slot, status, and display order fields.
+- Migrates existing square and banner inventory settings when the plugin is activated.
+- Removed the custom Admin CP JavaScript editor; public same-page rotation still uses JavaScript when enabled.
+
 ## 0.6.3 - 2026-09-09
 
 - Moved Admin CP inventory row editor injection to MyBB's page header hook for reliable settings-page output.
