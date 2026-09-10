@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.2 - 2026-09-10
+
+- Fixed the native ad form submit button rendering without a label.
+- Added explicit Add ad and Save changes labels for the create and edit forms.
+
 ## 0.7.1 - 2026-09-10
 
 - Added a read-only Template variables row to the Rotating Ads settings page for issue #6.

@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.7.1',
+        'version' => '0.7.2',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -962,7 +962,10 @@ function rotating_ads_admin_form($action, $aid = 0)
         $form->generate_check_box('enabled', 1, rotating_ads_lang('rotating_ads_enabled', 'Enabled'), array('checked' => !empty($ad['enabled'])))
     );
     $container->end();
-    $buttons = array($form->generate_submit_button($lang->save_changes));
+    $submit_label = $editing
+        ? rotating_ads_lang('rotating_ads_save_changes', 'Save changes')
+        : rotating_ads_lang('rotating_ads_add_ad', 'Add ad');
+    $buttons = array($form->generate_submit_button($submit_label));
     $form->output_submit_wrapper($buttons);
     $form->end();
     $page->output_footer();

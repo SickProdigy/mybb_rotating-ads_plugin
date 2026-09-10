@@ -27,6 +27,7 @@ $l['rotating_ads_ad'] = 'Ad';
 $l['rotating_ads_add_ad'] = 'Add ad';
 $l['rotating_ads_add_ad_description'] = 'Add a square or banner advertisement.';
 $l['rotating_ads_edit_ad'] = 'Edit ad';
+$l['rotating_ads_save_changes'] = 'Save changes';
 $l['rotating_ads_delete_ad'] = 'Delete ad';
 $l['rotating_ads_delete_confirm'] = 'Are you sure you want to delete this ad?';
 $l['rotating_ads_slot'] = 'Slot';
