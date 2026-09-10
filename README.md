@@ -45,7 +45,7 @@ The plugin does not impose either slot on a theme. Administrators place `{$rotat
 
 ## Configuration
 
-Manage individual ads in **Admin CP -> Configuration -> Rotating Ads**. Use **Add ad** to create a square or banner ad, then configure its weight, schedule, limits, country targeting, or status from the native MyBB management page. Existing pipe-delimited inventories from versions before 0.7.0 are imported when the plugin is activated.
+Manage individual ads in **Admin CP -> Configuration -> Rotating Ads**. Use **Add ad** to create a square or banner ad, then configure its weight, schedule, limits, country targeting, or status from the native MyBB management page.
 
 Delivery weight is relative: ads with the default weight of `1` have equal odds, while an ad with weight `5` is selected five times as often as a weight-`1` ad in the same eligible pool. Start and end dates use UTC. Limits use `0` for unlimited delivery.
 

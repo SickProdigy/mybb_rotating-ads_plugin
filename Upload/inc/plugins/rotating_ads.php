@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.8.1',
+        'version' => '0.8.2',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -71,7 +71,6 @@ function rotating_ads_uninstall()
 function rotating_ads_activate()
 {
     rotating_ads_ensure_storage();
-    rotating_ads_migrate_inventory_settings();
     rotating_ads_ensure_settings();
     rotating_ads_refresh_stylesheets();
 
@@ -97,19 +96,21 @@ function rotating_ads_ensure_storage()
 {
     global $db;
 
-    if (!$db->table_exists('rotating_ads')) {
-        $collation = $db->build_create_table_collation();
+    if ($db->table_exists('rotating_ads')) {
+        return;
+    }
 
-        switch ($db->type) {
-            case 'pgsql':
-                $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
+    $collation = $db->build_create_table_collation();
+
+    switch ($db->type) {
+        case 'pgsql':
+            $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
                     aid serial,
                     slot varchar(10) NOT NULL default 'square',
                     image_url varchar(500) NOT NULL default '',
                     destination_url varchar(500) NOT NULL default '',
                     alt_text varchar(255) NOT NULL default '',
                     enabled smallint NOT NULL default '1',
-                    display_order integer NOT NULL default '0',
                     weight integer NOT NULL default '1',
                     start_at integer NOT NULL default '0',
                     end_at integer NOT NULL default '0',
@@ -121,16 +122,15 @@ function rotating_ads_ensure_storage()
                     country_codes varchar(1000) NOT NULL default '',
                     PRIMARY KEY (aid)
                 )");
-                break;
-            case 'sqlite':
-                $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
+            break;
+        case 'sqlite':
+            $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
                     aid INTEGER PRIMARY KEY,
                     slot varchar(10) NOT NULL default 'square',
                     image_url varchar(500) NOT NULL default '',
                     destination_url varchar(500) NOT NULL default '',
                     alt_text varchar(255) NOT NULL default '',
                     enabled tinyint(1) NOT NULL default '1',
-                    display_order int NOT NULL default '0',
                     weight int NOT NULL default '1',
                     start_at int NOT NULL default '0',
                     end_at int NOT NULL default '0',
@@ -141,16 +141,15 @@ function rotating_ads_ensure_storage()
                     country_mode varchar(10) NOT NULL default 'all',
                     country_codes varchar(1000) NOT NULL default ''
                 )");
-                break;
-            default:
-                $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
+            break;
+        default:
+            $db->write_query('CREATE TABLE ' . TABLE_PREFIX . "rotating_ads (
                     aid int unsigned NOT NULL auto_increment,
                     slot varchar(10) NOT NULL default 'square',
                     image_url varchar(500) NOT NULL default '',
                     destination_url varchar(500) NOT NULL default '',
                     alt_text varchar(255) NOT NULL default '',
                     enabled tinyint(1) NOT NULL default '1',
-                    display_order int NOT NULL default '0',
                     weight smallint unsigned NOT NULL default '1',
                     start_at int unsigned NOT NULL default '0',
                     end_at int unsigned NOT NULL default '0',
@@ -163,63 +162,7 @@ function rotating_ads_ensure_storage()
                     PRIMARY KEY (aid),
                     KEY slot_enabled (slot, enabled)
                 ) ENGINE=MyISAM{$collation}");
-                break;
-        }
-    }
-
-    $integer = $db->type === 'pgsql' ? 'integer' : 'int';
-    $bigint = 'bigint';
-    $columns = array(
-        'weight' => "{$integer} NOT NULL default '1'",
-        'start_at' => "{$integer} NOT NULL default '0'",
-        'end_at' => "{$integer} NOT NULL default '0'",
-        'max_impressions' => "{$bigint} NOT NULL default '0'",
-        'max_clicks' => "{$bigint} NOT NULL default '0'",
-        'impressions' => "{$bigint} NOT NULL default '0'",
-        'clicks' => "{$bigint} NOT NULL default '0'",
-        'country_mode' => "varchar(10) NOT NULL default 'all'",
-        'country_codes' => "varchar(1000) NOT NULL default ''"
-    );
-    foreach ($columns as $name => $definition) {
-        if (!$db->field_exists($name, 'rotating_ads')) {
-            $db->add_column('rotating_ads', $name, $definition);
-        }
-    }
-}
-
-function rotating_ads_migrate_inventory_settings()
-{
-    global $db;
-
-    if (!$db->table_exists('rotating_ads')) {
-        return;
-    }
-
-    $count_query = $db->simple_select('rotating_ads', 'COUNT(aid) AS ads');
-    $count = $db->fetch_field($count_query, 'ads');
-    if ((int)$count > 0) {
-        return;
-    }
-
-    $legacy_settings = array(
-        'rotating_ads_square_inventory' => 'square',
-        'rotating_ads_banner_inventory' => 'banner'
-    );
-
-    foreach ($legacy_settings as $setting_name => $slot) {
-        $query = $db->simple_select(
-            'settings',
-            'value',
-            "name='" . $db->escape_string($setting_name) . "'",
-            array('limit' => 1)
-        );
-        $setting = $db->fetch_array($query);
-
-        foreach (rotating_ads_parse_inventory_records(isset($setting['value']) ? $setting['value'] : '') as $order => $ad) {
-            $ad['slot'] = $slot;
-            $ad['display_order'] = $order + 1;
-            $db->insert_query('rotating_ads', rotating_ads_prepare_ad_for_database($ad));
-        }
+            break;
     }
 }
 
@@ -356,11 +299,6 @@ function rotating_ads_ensure_settings()
         }
     }
 
-    $db->delete_query(
-        'settings',
-        "name IN ('rotating_ads_square_inventory', 'rotating_ads_banner_inventory')"
-    );
-
     rotating_ads_rebuild_settings();
 }
 
@@ -374,10 +312,6 @@ function rotating_ads_track_request()
     $action = isset($mybb->input['action']) ? $mybb->input['action'] : '';
     if ($action !== 'rotating_ads_click' && $action !== 'rotating_ads_image') {
         return;
-    }
-
-    if ($db->table_exists('rotating_ads') && !$db->field_exists('impressions', 'rotating_ads')) {
-        rotating_ads_ensure_storage();
     }
 
     $aid = isset($mybb->input['aid']) ? (int)$mybb->input['aid'] : 0;
@@ -461,15 +395,10 @@ function rotating_ads_get_ads($slot)
         'rotating_ads',
         '*',
         "slot='" . $db->escape_string($slot) . "' AND enabled='1'",
-        array('order_by' => 'display_order, aid', 'order_dir' => 'ASC')
+        array('order_by' => 'aid', 'order_dir' => 'ASC')
     );
 
     while ($ad = $db->fetch_array($query)) {
-        if (!array_key_exists('weight', $ad)) {
-            rotating_ads_ensure_storage();
-            return rotating_ads_get_ads($slot);
-        }
-
         if (!rotating_ads_valid_url($ad['image_url']) || !rotating_ads_valid_url($ad['destination_url'])) {
             continue;
         }
@@ -477,55 +406,6 @@ function rotating_ads_get_ads($slot)
         if (rotating_ads_ad_is_eligible($ad)) {
             $ads[] = $ad;
         }
-    }
-
-    return $ads;
-}
-
-function rotating_ads_parse_inventory($value)
-{
-    $ads = array();
-
-    foreach (rotating_ads_parse_inventory_records($value) as $ad) {
-        if (!$ad['enabled']) {
-            continue;
-        }
-
-        $ads[] = array(
-            'image_url' => $ad['image_url'],
-            'destination_url' => $ad['destination_url'],
-            'alt_text' => $ad['alt_text']
-        );
-    }
-
-    return $ads;
-}
-
-function rotating_ads_parse_inventory_records($value)
-{
-    $ads = array();
-    $lines = preg_split('/\r\n|\r|\n/', trim((string)$value));
-
-    foreach ($lines as $line) {
-        $line = trim($line);
-        if ($line === '' || strpos($line, '#') === 0) {
-            continue;
-        }
-
-        $parts = array_map('trim', explode('|', $line, 4));
-        $image_url = isset($parts[0]) ? $parts[0] : '';
-        $destination_url = isset($parts[1]) ? $parts[1] : '';
-
-        if (!rotating_ads_valid_url($image_url) || !rotating_ads_valid_url($destination_url)) {
-            continue;
-        }
-
-        $ads[] = array(
-            'image_url' => $image_url,
-            'destination_url' => $destination_url,
-            'alt_text' => isset($parts[2]) ? $parts[2] : '',
-            'enabled' => !isset($parts[3]) || (int)$parts[3] === 1
-        );
     }
 
     return $ads;
@@ -541,7 +421,6 @@ function rotating_ads_prepare_ad_for_database($ad)
         'destination_url' => $db->escape_string(trim((string)$ad['destination_url'])),
         'alt_text' => $db->escape_string(trim((string)$ad['alt_text'])),
         'enabled' => empty($ad['enabled']) ? 0 : 1,
-        'display_order' => isset($ad['display_order']) ? max(0, (int)$ad['display_order']) : 0,
         'weight' => isset($ad['weight']) ? min(100, max(1, (int)$ad['weight'])) : 1,
         'start_at' => isset($ad['start_at']) ? max(0, (int)$ad['start_at']) : 0,
         'end_at' => isset($ad['end_at']) ? max(0, (int)$ad['end_at']) : 0,
@@ -979,12 +858,7 @@ function rotating_ads_admin_page()
         return;
     }
 
-    $had_storage = $db->table_exists('rotating_ads');
     rotating_ads_ensure_storage();
-    if (!$had_storage) {
-        rotating_ads_migrate_inventory_settings();
-        rotating_ads_ensure_settings();
-    }
 
     $lang->load('rotating_ads');
 
@@ -1092,7 +966,6 @@ function rotating_ads_admin_form($action, $aid = 0)
         'destination_url' => '',
         'alt_text' => '',
         'enabled' => 1,
-        'display_order' => 0,
         'weight' => 1,
         'start_at' => 0,
         'end_at' => 0,
@@ -1124,7 +997,6 @@ function rotating_ads_admin_form($action, $aid = 0)
             'destination_url' => trim($mybb->get_input('destination_url')),
             'alt_text' => trim($mybb->get_input('alt_text')),
             'enabled' => $mybb->get_input('enabled') ? 1 : 0,
-            'display_order' => 0,
             'weight' => min(100, max(1, (int)$mybb->get_input('weight'))),
             'start_at' => rotating_ads_parse_admin_date($mybb->get_input('start_date'), false),
             'end_at' => rotating_ads_parse_admin_date($mybb->get_input('end_date'), true),

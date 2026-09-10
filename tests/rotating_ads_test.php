@@ -51,7 +51,6 @@ class RotatingAdsTestDatabase
     public $settings = array();
     public $ads = array();
     public $ads_table_exists = false;
-    public $ad_fields = array('aid', 'slot', 'image_url', 'destination_url', 'alt_text', 'enabled', 'display_order');
     public $themes = array(
         array('tid' => 2),
         array('tid' => 3),
@@ -79,10 +78,6 @@ class RotatingAdsTestDatabase
         }
 
         if ($table === 'rotating_ads') {
-            if (strpos($fields, 'COUNT(') !== false) {
-                return new RotatingAdsTestQuery(array(array('ads' => count($this->ads))));
-            }
-
             $rows = array_values($this->ads);
             if (preg_match("/slot='([^']+)'/", $where, $matches)) {
                 $slot = stripslashes($matches[1]);
@@ -96,8 +91,7 @@ class RotatingAdsTestDatabase
             }
 
             usort($rows, function ($left, $right) {
-                return array($left['slot'], $left['display_order'], $left['aid'])
-                    <=> array($right['slot'], $right['display_order'], $right['aid']);
+                return array($left['slot'], $left['aid']) <=> array($right['slot'], $right['aid']);
             });
 
             return new RotatingAdsTestQuery($rows);
@@ -216,11 +210,7 @@ class RotatingAdsTestDatabase
         }
 
         if ($table === 'settings') {
-            if (strpos($where, 'rotating_ads_square_inventory') !== false) {
-                unset($this->settings['rotating_ads_square_inventory'], $this->settings['rotating_ads_banner_inventory']);
-            } else {
-                $this->settings = array();
-            }
+            $this->settings = array();
         }
 
         if ($table === 'themestylesheets') {
@@ -268,18 +258,6 @@ class RotatingAdsTestDatabase
         }
     }
 
-    public function field_exists($field, $table)
-    {
-        return $table === 'rotating_ads' && in_array($field, $this->ad_fields, true);
-    }
-
-    public function add_column($table, $field, $definition)
-    {
-        if ($table === 'rotating_ads') {
-            $this->ad_fields[] = $field;
-        }
-    }
-
     public function drop_table($table)
     {
         if ($table === 'rotating_ads') {
@@ -294,9 +272,6 @@ class RotatingAdsTestLang
     public $rotating_ads_name = 'Rotating Ads';
     public $rotating_ads_description = 'Description';
     public $rotating_ads_settings_description = 'Settings description';
-    public $rotating_ads_square_inventory = 'Square Ads';
-    public $rotating_ads_banner_inventory = 'Banner Ads';
-    public $rotating_ads_inventory_description = 'Inventory description';
     public $rotating_ads_sponsor_label = 'Sponsor label';
     public $rotating_ads_sponsor_label_description = 'Sponsor label description';
     public $rotating_ads_default_sponsor_label = 'Sponsored';
@@ -347,8 +322,6 @@ $mybb = (object)array(
     'asset_url' => 'https://static.example.com',
     'settings' => array(
         'bburl' => 'https://example.com/forum',
-        'rotating_ads_square_inventory' => '',
-        'rotating_ads_banner_inventory' => '',
         'rotating_ads_sponsor_label' => 'Sponsored',
         'rotating_ads_hidden_groups' => '',
         'rotating_ads_enable_css' => '1',
@@ -391,7 +364,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.1',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.2',
     'plugin info should expose localized metadata and version'
 );
 rotating_ads_test_assert(
@@ -399,15 +372,12 @@ rotating_ads_test_assert(
     'native edit form should provide its own non-empty submit label'
 );
 
-$inventory = "https://example.com/ad.jpg|https://example.com/|Example <Ad>|1\n"
-    . "https://example.com/disabled.jpg|https://example.com/|Disabled|0\n"
-    . "ftp://example.com/bad.jpg|https://example.com/|Bad|1\n"
-    . "# ignored comment\n";
-$ads = rotating_ads_parse_inventory($inventory);
-rotating_ads_test_assert(
-    count($ads) === 1 && $ads[0]['alt_text'] === 'Example <Ad>',
-    'inventory parser should keep only enabled supported ads'
-);
+$ads = array(array(
+    'image_url' => 'https://example.com/ad.jpg',
+    'destination_url' => 'https://example.com/',
+    'alt_text' => 'Example <Ad>',
+    'weight' => 1
+));
 rotating_ads_test_assert(
     rotating_ads_valid_url('/images/sponsored/ad-hostpro.jpg')
     && rotating_ads_valid_url('https://cdn.example.com/ad.jpg')
@@ -449,9 +419,10 @@ rotating_ads_test_assert(
     'rendered ad should support hidden labels and same-tab links'
 );
 
-$rotating_ads_multi_inventory = "https://example.com/ad-1.jpg|https://example.com/1|One|1\n"
-    . "https://example.com/ad-2.jpg|https://example.com/2|Two|1\n";
-$rotating_ads_multi_ads = rotating_ads_parse_inventory($rotating_ads_multi_inventory);
+$rotating_ads_multi_ads = array(
+    array('image_url' => 'https://example.com/ad-1.jpg', 'destination_url' => 'https://example.com/1', 'alt_text' => 'One', 'weight' => 1),
+    array('image_url' => 'https://example.com/ad-2.jpg', 'destination_url' => 'https://example.com/2', 'alt_text' => 'Two', 'weight' => 1)
+);
 $rotating_ads_rotating_slot = rotating_ads_render_slot(
     'square',
     $rotating_ads_multi_ads,
@@ -531,19 +502,15 @@ $mybb->settings['rotating_ads_enable_rotation'] = '0';
 $mybb->settings['rotating_ads_rotation_min_seconds'] = '15';
 $mybb->settings['rotating_ads_rotation_max_seconds'] = '30';
 
-$db->settings['rotating_ads_square_inventory'] = array(
-    'sid' => 90,
-    'name' => 'rotating_ads_square_inventory',
-    'value' => 'https://custom.example/ad.png|https://custom.example/|Custom|1'
-);
-$db->settings['rotating_ads_banner_inventory'] = array(
-    'sid' => 91,
-    'name' => 'rotating_ads_banner_inventory',
-    'value' => 'https://custom.example/banner.png|https://custom.example/banner|Banner|0'
-);
 rotating_ads_ensure_storage();
-rotating_ads_migrate_inventory_settings();
 rotating_ads_ensure_settings();
+$db->insert_query('rotating_ads', rotating_ads_prepare_ad_for_database(array(
+    'slot' => 'square',
+    'image_url' => 'https://custom.example/ad.png',
+    'destination_url' => 'https://custom.example/',
+    'alt_text' => 'Custom',
+    'enabled' => 1
+)));
 rotating_ads_test_assert(
     isset($db->settings['rotating_ads_sponsor_label'])
     && isset($db->settings['rotating_ads_template_variables'])
@@ -562,19 +529,10 @@ rotating_ads_test_assert(
     'settings should render both template variables as native read-only guidance'
 );
 rotating_ads_test_assert(
-    !isset($db->settings['rotating_ads_square_inventory'])
-    && !isset($db->settings['rotating_ads_banner_inventory'])
-    && count($db->ads) === 2
+    count($db->ads) === 1
     && $db->ads[1]['slot'] === 'square'
-    && $db->ads[2]['slot'] === 'banner'
-    && (int)$db->ads[2]['enabled'] === 0,
-    'legacy inventory settings should migrate to stable ad records and then be removed'
-);
-rotating_ads_test_assert(
-    in_array('weight', $db->ad_fields, true)
-    && in_array('impressions', $db->ad_fields, true)
-    && in_array('country_codes', $db->ad_fields, true),
-    'storage upgrades should add campaign and metrics fields'
+    && $db->ads[1]['weight'] === 1,
+    'current ad records should use campaign defaults'
 );
 
 rotating_ads_build_output();
@@ -582,7 +540,7 @@ rotating_ads_test_assert(
     $rotating_ads_assets === ''
     && strpos($rotating_ads_square, 'rotating-ad--square') !== false
     && $rotating_ads_banner === '',
-    'global output should build populated slots without legacy link assets'
+    'global output should build populated database-backed slots'
 );
 
 rotating_ads_refresh_stylesheets();
@@ -610,7 +568,7 @@ $db->insert_query('rotating_ads', rotating_ads_prepare_ad_for_database(array(
     'destination_url' => 'https://example.com/2',
     'alt_text' => 'Two',
     'enabled' => 1,
-    'display_order' => 2
+    'weight' => 2
 )));
 rotating_ads_build_output();
 rotating_ads_test_assert(
@@ -665,7 +623,7 @@ rotating_ads_build_output();
 rotating_ads_test_assert(
     $rotating_ads_assets === ''
     && strpos($rotating_ads_square, 'rotating-ad--square') !== false,
-    'users outside hidden groups should still receive ads without legacy link assets'
+    'users outside hidden groups should still receive ads'
 );
 
 echo "Rotating Ads tests passed.\n";

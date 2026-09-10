@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2 - 2026-09-10
+
+- Removed pre-release legacy inventory migration and automatic old-schema adaptation.
+- Removed the obsolete display-order field from new installations and current runtime logic.
+- Established the 0.8 campaign table as the development baseline before 1.0.0.
+
 ## 0.8.1 - 2026-09-10
 
 - Added support for site-relative image and destination paths such as `/images/sponsored/ad-hostpro.jpg`.
