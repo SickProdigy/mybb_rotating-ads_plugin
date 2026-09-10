@@ -46,6 +46,7 @@ The plugin does not impose either slot on a theme. Administrators place `{$rotat
 Manage individual ads in **Admin CP -> Configuration -> Rotating Ads**. Use **Add ad** to create a square or banner ad, then edit, disable, reorder, or delete it from the native MyBB management table. Existing pipe-delimited inventories from versions before 0.7.0 are imported when the plugin is activated.
 
 General display and timing options remain under **Configuration -> Settings -> Rotating Ads**.
+That page also displays the two supported template variables as read-only values; the plugin never inserts an ad slot into the index or another template automatically.
 
 Additional settings:
 

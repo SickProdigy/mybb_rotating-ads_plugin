@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 - 2026-09-10
+
+- Added a read-only Template variables row to the Rotating Ads settings page for issue #6.
+- Clarified that administrators choose placement with `{$rotating_ads_square}` and `{$rotating_ads_banner}`; the plugin does not inject a slot automatically.
+
 ## 0.7.0 - 2026-09-10
 
 - Replaced the pipe-delimited Admin CP inventory textareas with a native MyBB ad manager under Configuration > Rotating Ads.

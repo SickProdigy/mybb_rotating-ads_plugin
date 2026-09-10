@@ -353,7 +353,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.7.0',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.7.1',
     'plugin info should expose localized metadata and version'
 );
 
@@ -438,6 +438,7 @@ rotating_ads_migrate_inventory_settings();
 rotating_ads_ensure_settings();
 rotating_ads_test_assert(
     isset($db->settings['rotating_ads_sponsor_label'])
+    && isset($db->settings['rotating_ads_template_variables'])
     && isset($db->settings['rotating_ads_hidden_groups'])
     && isset($db->settings['rotating_ads_enable_css'])
     && isset($db->settings['rotating_ads_open_new_tab'])
@@ -445,6 +446,12 @@ rotating_ads_test_assert(
     && isset($db->settings['rotating_ads_rotation_min_seconds'])
     && isset($db->settings['rotating_ads_rotation_max_seconds']),
     'setting synchronization should create polish settings'
+);
+rotating_ads_test_assert(
+    strpos($db->settings['rotating_ads_template_variables']['optionscode'], "php\n") === 0
+    && strpos($db->settings['rotating_ads_template_variables']['optionscode'], '{&#36;rotating_ads_square}') !== false
+    && strpos($db->settings['rotating_ads_template_variables']['optionscode'], '{&#36;rotating_ads_banner}') !== false,
+    'settings should render both template variables as native read-only guidance'
 );
 rotating_ads_test_assert(
     !isset($db->settings['rotating_ads_square_inventory'])

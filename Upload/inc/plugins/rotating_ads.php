@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.7.0',
+        'version' => '0.7.1',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -227,12 +227,21 @@ function rotating_ads_ensure_settings()
 
     $settings = array(
         array(
+            'name' => 'rotating_ads_template_variables',
+            'title' => rotating_ads_lang('rotating_ads_template_variables', 'Template variables'),
+            'description' => rotating_ads_lang('rotating_ads_template_variables_description', 'Place either variable in the theme template where that ad slot should appear. The plugin does not choose a location automatically.'),
+            'optionscode' => "php\n<code>{&#36;rotating_ads_square}</code><br /><code>{&#36;rotating_ads_banner}</code>",
+            'value' => '',
+            'disporder' => 1,
+            'gid' => $gid
+        ),
+        array(
             'name' => 'rotating_ads_sponsor_label',
             'title' => rotating_ads_lang('rotating_ads_sponsor_label', 'Sponsor label'),
             'description' => rotating_ads_lang('rotating_ads_sponsor_label_description', 'Optional label displayed above each ad. Leave blank to hide the label.'),
             'optionscode' => 'text',
             'value' => rotating_ads_lang('rotating_ads_default_sponsor_label', 'Sponsored'),
-            'disporder' => 1,
+            'disporder' => 2,
             'gid' => $gid
         ),
         array(
@@ -241,7 +250,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_hidden_groups_description', 'Comma-separated primary or additional usergroup IDs that should not see rotating ads. Leave blank to show ads to all groups.'),
             'optionscode' => 'text',
             'value' => '',
-            'disporder' => 2,
+            'disporder' => 3,
             'gid' => $gid
         ),
         array(
@@ -250,7 +259,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_enable_css_description', 'Load the small default stylesheet. Disable this if your theme provides its own ad styling.'),
             'optionscode' => 'yesno',
             'value' => '1',
-            'disporder' => 3,
+            'disporder' => 4,
             'gid' => $gid
         ),
         array(
@@ -259,7 +268,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_open_new_tab_description', 'Open advertisement links in a new browser tab.'),
             'optionscode' => 'yesno',
             'value' => '1',
-            'disporder' => 4,
+            'disporder' => 5,
             'gid' => $gid
         ),
         array(
@@ -268,7 +277,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_enable_rotation_description', 'Cycle through enabled ads without requiring a page reload. Requires JavaScript; visitors without JavaScript keep the normal static output. Slots with fewer than two enabled ads also stay static.'),
             'optionscode' => 'yesno',
             'value' => '0',
-            'disporder' => 5,
+            'disporder' => 6,
             'gid' => $gid
         ),
         array(
@@ -277,7 +286,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_rotation_min_seconds_description', 'Minimum seconds an ad remains visible before the next rotation.'),
             'optionscode' => 'numeric',
             'value' => '15',
-            'disporder' => 6,
+            'disporder' => 7,
             'gid' => $gid
         ),
         array(
@@ -286,7 +295,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_rotation_max_seconds_description', 'Maximum seconds an ad remains visible before the next rotation. Values below the minimum are treated as the minimum.'),
             'optionscode' => 'numeric',
             'value' => '30',
-            'disporder' => 7,
+            'disporder' => 8,
             'gid' => $gid
         )
     );
