@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.4 - 2026-09-10
+
+- Added a general setting to show or hide the readable destination hostname in tracked click URLs.
+- Kept destination disclosure enabled by default while allowing the shorter `ra_click&aid=...` format.
+
 ## 0.8.3 - 2026-09-10
 
 - Shortened tracked click URLs to use the `ra_click` action.

@@ -326,6 +326,7 @@ $mybb = (object)array(
         'rotating_ads_hidden_groups' => '',
         'rotating_ads_enable_css' => '1',
         'rotating_ads_open_new_tab' => '1',
+        'rotating_ads_reveal_destination' => '1',
         'rotating_ads_enable_rotation' => '0',
         'rotating_ads_rotation_min_seconds' => '15',
         'rotating_ads_rotation_max_seconds' => '30',
@@ -364,7 +365,7 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.3',
+    $info['name'] === 'Rotating Ads' && $info['version'] === '0.8.4',
     'plugin info should expose localized metadata and version'
 );
 rotating_ads_test_assert(
@@ -400,6 +401,14 @@ rotating_ads_test_assert(
     && strpos($local_rendered, 'action=rotating_ads_image&amp;aid=99') !== false,
     'site-relative ads should retain click and impression tracking'
 );
+$mybb->settings['rotating_ads_reveal_destination'] = '0';
+$private_local_rendered = rotating_ads_render_slot('square', $local_ad, 'Sponsored', false);
+rotating_ads_test_assert(
+    strpos($private_local_rendered, 'action=ra_click&amp;aid=99') !== false
+    && strpos($private_local_rendered, '&amp;to=') === false,
+    'destination disclosure should be removable from tracked links'
+);
+$mybb->settings['rotating_ads_reveal_destination'] = '1';
 
 $rendered = rotating_ads_render_slot('square', $ads, 'Ad & Sponsor', true);
 rotating_ads_test_assert(
@@ -517,6 +526,7 @@ rotating_ads_test_assert(
     && isset($db->settings['rotating_ads_hidden_groups'])
     && isset($db->settings['rotating_ads_enable_css'])
     && isset($db->settings['rotating_ads_open_new_tab'])
+    && isset($db->settings['rotating_ads_reveal_destination'])
     && isset($db->settings['rotating_ads_enable_rotation'])
     && isset($db->settings['rotating_ads_rotation_min_seconds'])
     && isset($db->settings['rotating_ads_rotation_max_seconds']),

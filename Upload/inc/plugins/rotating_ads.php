@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://www.sickgaming.net',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '0.8.3',
+        'version' => '0.8.4',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -259,12 +259,21 @@ function rotating_ads_ensure_settings()
             'gid' => $gid
         ),
         array(
+            'name' => 'rotating_ads_reveal_destination',
+            'title' => rotating_ads_lang('rotating_ads_reveal_destination', 'Show destination in tracked links'),
+            'description' => rotating_ads_lang('rotating_ads_reveal_destination_description', 'Include the destination hostname in tracked click URLs so visitors can recognize where the link leads.'),
+            'optionscode' => 'yesno',
+            'value' => '1',
+            'disporder' => 6,
+            'gid' => $gid
+        ),
+        array(
             'name' => 'rotating_ads_enable_rotation',
             'title' => rotating_ads_lang('rotating_ads_enable_rotation', 'Rotate ads while viewing a page'),
             'description' => rotating_ads_lang('rotating_ads_enable_rotation_description', 'Cycle through enabled ads without requiring a page reload. Requires JavaScript; visitors without JavaScript keep the normal static output. Slots with fewer than two enabled ads also stay static.'),
             'optionscode' => 'yesno',
             'value' => '0',
-            'disporder' => 6,
+            'disporder' => 7,
             'gid' => $gid
         ),
         array(
@@ -273,7 +282,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_rotation_min_seconds_description', 'Minimum seconds an ad remains visible before the next rotation.'),
             'optionscode' => 'numeric',
             'value' => '15',
-            'disporder' => 7,
+            'disporder' => 8,
             'gid' => $gid
         ),
         array(
@@ -282,7 +291,7 @@ function rotating_ads_ensure_settings()
             'description' => rotating_ads_lang('rotating_ads_rotation_max_seconds_description', 'Maximum seconds an ad remains visible before the next rotation. Values below the minimum are treated as the minimum.'),
             'optionscode' => 'numeric',
             'value' => '30',
-            'disporder' => 8,
+            'disporder' => 9,
             'gid' => $gid
         )
     );
@@ -587,8 +596,11 @@ function rotating_ads_render_link($ad, $open_new_tab = true, $hidden = false)
 
     if ($aid > 0) {
         $base_url = rtrim($mybb->settings['bburl'], '/') . '/misc.php';
-        $destination_label = rotating_ads_destination_label($ad['destination_url']);
-        $destination_url = $base_url . '?action=ra_click&to=' . rawurlencode($destination_label) . '&aid=' . $aid;
+        $destination_url = $base_url . '?action=ra_click';
+        if (rotating_ads_setting_enabled('rotating_ads_reveal_destination', true)) {
+            $destination_url .= '&to=' . rawurlencode(rotating_ads_destination_label($ad['destination_url']));
+        }
+        $destination_url .= '&aid=' . $aid;
         $tracked_image_url = $base_url . '?action=rotating_ads_image&aid=' . $aid;
         $image_attribute = $hidden
             ? ' data-src="' . htmlspecialchars_uni($tracked_image_url) . '"'

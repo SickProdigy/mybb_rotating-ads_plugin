@@ -62,6 +62,7 @@ Additional settings:
 - `Hide ads from usergroups`: Comma-separated primary or additional usergroup IDs that should not see ads.
 - `Load plugin CSS`: Disable if your theme provides its own ad styling.
 - `Open ads in a new tab`: Controls whether links include `target="_blank"`.
+- `Show destination in tracked links`: Adds a readable `to=example.com` hostname to click-tracking URLs. Disable it for shorter tracked links.
 - `Rotate ads while viewing a page`: Enables JavaScript-powered browser-side cycling when a slot has at least two enabled ads.
 - `Minimum rotation seconds` / `Maximum rotation seconds`: Controls the random delay range between ad changes. If maximum is below minimum, the plugin treats it as the minimum.
 
@@ -99,7 +100,7 @@ By default, the plugin chooses one random ad for each slot on each page request.
 
 ## Metrics
 
-The manager displays lifetime image impressions, tracked clicks, and CTR for each ad. Image and destination requests pass through lightweight `misc.php` redirects so static, non-JavaScript views are included. Click URLs use the concise `ra_click` action and include a readable `to` hostname so visitors can see the destination domain before following the link. The server still resolves the destination from the ad ID, preventing URL tampering. Hidden rotating images are loaded only when shown. Metrics are aggregate operational totals: no visitor identity is stored, and the counts are not intended as billing-grade bot-filtered analytics.
+The manager displays lifetime image impressions, tracked clicks, and CTR for each ad. Image and destination requests pass through lightweight `misc.php` redirects so static, non-JavaScript views are included. Click URLs use the concise `ra_click` action and can include a readable `to` hostname so visitors can see the destination domain before following the link. The server still resolves the destination from the ad ID, preventing URL tampering. Hidden rotating images are loaded only when shown. Metrics are aggregate operational totals: no visitor identity is stored, and the counts are not intended as billing-grade bot-filtered analytics.
 
 ## Uninstall
 
