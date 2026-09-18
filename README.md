@@ -47,6 +47,8 @@ The plugin does not impose either slot on a theme. Administrators place `{$rotat
 
 Manage individual ads in **Admin CP -> Configuration -> Rotating Ads**. Use **Add ad** to create a square or banner ad, then configure its weight, schedule, limits, country targeting, or status from the native MyBB management page.
 
+Use **Backup & restore** to download all ads as a single JSON backup, upload a backup file, or paste JSON to import it. Imports validate every ad before saving changes and can either append to the current list or replace it.
+
 Delivery weight is relative: ads with the default weight of `1` have equal odds, while an ad with weight `5` is selected five times as often as a weight-`1` ad in the same eligible pool. Start and end dates use UTC and provide the browser's native calendar picker. Limits use `0` for unlimited delivery.
 
 Image and destination fields accept full HTTP(S) URLs or site-relative paths beginning with `/`. For example, an image stored beneath the forum installation can use `/images/sponsored/ad-hostpro.jpg` when the forum is installed at the site root.

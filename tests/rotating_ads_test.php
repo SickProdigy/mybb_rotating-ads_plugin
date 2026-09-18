@@ -220,6 +220,11 @@ class RotatingAdsTestDatabase
         }
 
         if ($table === 'rotating_ads') {
+            if ($where === '1=1') {
+                $this->ads = array();
+                return;
+            }
+
             preg_match("/aid='([0-9]+)'/", $where, $matches);
             $aid = isset($matches[1]) ? (int)$matches[1] : 0;
             unset($this->ads[$aid]);
@@ -287,6 +292,13 @@ class RotatingAdsTestLang
     public $rotating_ads_rotation_min_seconds_description = 'Minimum rotation description';
     public $rotating_ads_rotation_max_seconds = 'Maximum rotation seconds';
     public $rotating_ads_rotation_max_seconds_description = 'Maximum rotation description';
+    public $rotating_ads_import_invalid_json = 'Enter a valid JSON backup.';
+    public $rotating_ads_import_missing_ads = 'The backup does not contain an ads list.';
+    public $rotating_ads_import_invalid_ad = 'Ad #{number} is not a valid ad record.';
+    public $rotating_ads_import_invalid_image_url = 'Ad #{number} has an invalid image URL.';
+    public $rotating_ads_import_invalid_destination_url = 'Ad #{number} has an invalid destination URL.';
+    public $rotating_ads_import_invalid_date_range = 'Ad #{number} has an end date before its start date.';
+    public $rotating_ads_import_country_codes_required = 'Ad #{number} needs at least one country code for country targeting.';
 
     public function load($name)
     {
@@ -365,12 +377,28 @@ rotating_ads_test_assert(
 
 $info = rotating_ads_info();
 rotating_ads_test_assert(
-    $info['name'] === 'Rotating Ads' && $info['version'] === '1.0.0',
+    $info['name'] === 'Rotating Ads'
+    && $info['version'] === '1.0.1'
+    && $info['website'] === 'https://github.com/sickprodigy/mybb_rotating-ads_plugin'
+    && $info['authorsite'] === 'https://www.sickgaming.net',
     'plugin info should expose localized metadata and version'
 );
 rotating_ads_test_assert(
     strpos(file_get_contents(dirname(__DIR__) . '/Upload/inc/plugins/rotating_ads.php'), "rotating_ads_save_changes', 'Save changes'") !== false,
     'native edit form should provide its own non-empty submit label'
+);
+$plugin_source = file_get_contents(dirname(__DIR__) . '/Upload/inc/plugins/rotating_ads.php');
+$delete_cancel_guard = strpos($plugin_source, "isset(\$mybb->input['no'])");
+$delete_query = strpos($plugin_source, "\$db->delete_query('rotating_ads', \"aid='{\$aid}'\", 1)");
+rotating_ads_test_assert(
+    $delete_cancel_guard !== false && $delete_query !== false && $delete_cancel_guard < $delete_query,
+    'declining the delete confirmation should redirect before deleting the ad'
+);
+rotating_ads_test_assert(
+    strpos($plugin_source, "new Form('index.php?module=config-rotating_ads&amp;action=backup', 'post', 'rotating_ads_import', true)") !== false
+    && strpos($plugin_source, "generate_file_upload_box('import_file'") !== false
+    && strpos($plugin_source, "is_uploaded_file(\$upload['tmp_name'])") !== false,
+    'backup restore should accept uploaded JSON files through a multipart form'
 );
 
 $ads = array(array(
@@ -639,6 +667,62 @@ rotating_ads_test_assert(
     $rotating_ads_assets === ''
     && strpos($rotating_ads_square, 'rotating-ad--square') !== false,
     'users outside hidden groups should still receive ads'
+);
+
+$export = json_decode(rotating_ads_export_json(), true);
+rotating_ads_test_assert(
+    isset($export['ads'])
+    && count($export['ads']) === count($db->ads)
+    && $export['version'] === '1.0.1',
+    'ad export should bundle all records with plugin version metadata'
+);
+
+$replacement = json_encode(array(
+    'generator' => 'mybb_rotating_ads',
+    'ads' => array(
+        array(
+            'slot' => 'banner',
+            'image_url' => 'https://backup.example/ad.jpg',
+            'destination_url' => 'https://backup.example/',
+            'alt_text' => 'Backup',
+            'enabled' => 1,
+            'weight' => 3,
+            'start_at' => TIME_NOW - 10,
+            'end_at' => TIME_NOW + 10,
+            'max_impressions' => 100,
+            'max_clicks' => 10,
+            'impressions' => 7,
+            'clicks' => 2,
+            'country_mode' => 'allow',
+            'country_codes' => 'US,CA'
+        )
+    )
+));
+$import_result = rotating_ads_import_json($replacement, true);
+$imported_ad = reset($db->ads);
+rotating_ads_test_assert(
+    empty($import_result['errors'])
+    && $import_result['imported'] === 1
+    && count($db->ads) === 1
+    && $imported_ad['slot'] === 'banner'
+    && $imported_ad['impressions'] === 7
+    && $imported_ad['country_codes'] === 'US,CA',
+    'ad import should replace existing records and preserve backup fields'
+);
+
+$invalid_import = rotating_ads_import_json(json_encode(array('ads' => array(array(
+    'slot' => 'square',
+    'image_url' => 'javascript:alert(1)',
+    'destination_url' => 'https://bad.example/',
+    'country_mode' => 'allow',
+    'country_codes' => ''
+)))), true);
+$remaining_ad = reset($db->ads);
+rotating_ads_test_assert(
+    !empty($invalid_import['errors'])
+    && count($db->ads) === 1
+    && $remaining_ad['destination_url'] === 'https://backup.example/',
+    'invalid imports should report errors before replacing current ads'
 );
 
 echo "Rotating Ads tests passed.\n";

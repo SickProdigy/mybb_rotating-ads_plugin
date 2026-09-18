@@ -22,10 +22,10 @@ function rotating_ads_info()
     return array(
         'name' => isset($lang->rotating_ads_name) ? $lang->rotating_ads_name : 'Rotating Ads',
         'description' => isset($lang->rotating_ads_description) ? $lang->rotating_ads_description : 'Provides independently configurable square and banner advertisement slots.',
-        'website' => 'https://www.sickgaming.net',
+        'website' => 'https://github.com/sickprodigy/mybb_rotating-ads_plugin',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '1.0.0',
+        'version' => '1.0.1',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -438,6 +438,152 @@ function rotating_ads_prepare_ad_for_database($ad)
         'country_mode' => $db->escape_string(rotating_ads_country_mode(isset($ad['country_mode']) ? $ad['country_mode'] : 'all')),
         'country_codes' => $db->escape_string(rotating_ads_normalize_country_codes(isset($ad['country_codes']) ? $ad['country_codes'] : ''))
     );
+}
+
+function rotating_ads_backup_fields()
+{
+    return array(
+        'slot',
+        'image_url',
+        'destination_url',
+        'alt_text',
+        'enabled',
+        'weight',
+        'start_at',
+        'end_at',
+        'max_impressions',
+        'max_clicks',
+        'impressions',
+        'clicks',
+        'country_mode',
+        'country_codes'
+    );
+}
+
+function rotating_ads_export_bundle()
+{
+    global $db;
+
+    $ads = array();
+    if ($db->table_exists('rotating_ads')) {
+        $query = $db->simple_select('rotating_ads', '*', '', array('order_by' => 'slot, aid', 'order_dir' => 'ASC'));
+        $fields = rotating_ads_backup_fields();
+
+        while ($ad = $db->fetch_array($query)) {
+            $export = array();
+            foreach ($fields as $field) {
+                $export[$field] = isset($ad[$field]) ? $ad[$field] : '';
+            }
+
+            foreach (array('enabled', 'weight', 'start_at', 'end_at', 'max_impressions', 'max_clicks', 'impressions', 'clicks') as $field) {
+                $export[$field] = (int)$export[$field];
+            }
+
+            $ads[] = $export;
+        }
+    }
+
+    return array(
+        'generator' => 'mybb_rotating_ads',
+        'version' => '1.0.1',
+        'exported_at' => gmdate('c'),
+        'ads' => $ads
+    );
+}
+
+function rotating_ads_export_json()
+{
+    return json_encode(rotating_ads_export_bundle(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+}
+
+function rotating_ads_normalize_import_ad($ad, $position, &$errors)
+{
+    if (!is_array($ad)) {
+        $errors[] = rotating_ads_lang('rotating_ads_import_invalid_ad', 'Ad #{number} is not a valid ad record.', array('{number}' => $position));
+        return null;
+    }
+
+    $normalized = array(
+        'slot' => isset($ad['slot']) && $ad['slot'] === 'banner' ? 'banner' : 'square',
+        'image_url' => isset($ad['image_url']) ? trim((string)$ad['image_url']) : '',
+        'destination_url' => isset($ad['destination_url']) ? trim((string)$ad['destination_url']) : '',
+        'alt_text' => isset($ad['alt_text']) ? trim((string)$ad['alt_text']) : '',
+        'enabled' => empty($ad['enabled']) ? 0 : 1,
+        'weight' => isset($ad['weight']) ? min(100, max(1, (int)$ad['weight'])) : 1,
+        'start_at' => isset($ad['start_at']) ? max(0, (int)$ad['start_at']) : 0,
+        'end_at' => isset($ad['end_at']) ? max(0, (int)$ad['end_at']) : 0,
+        'max_impressions' => isset($ad['max_impressions']) ? max(0, (int)$ad['max_impressions']) : 0,
+        'max_clicks' => isset($ad['max_clicks']) ? max(0, (int)$ad['max_clicks']) : 0,
+        'impressions' => isset($ad['impressions']) ? max(0, (int)$ad['impressions']) : 0,
+        'clicks' => isset($ad['clicks']) ? max(0, (int)$ad['clicks']) : 0,
+        'country_mode' => rotating_ads_country_mode(isset($ad['country_mode']) ? $ad['country_mode'] : 'all'),
+        'country_codes' => rotating_ads_normalize_country_codes(isset($ad['country_codes']) ? $ad['country_codes'] : '')
+    );
+
+    if (!rotating_ads_valid_url($normalized['image_url'])) {
+        $errors[] = rotating_ads_lang('rotating_ads_import_invalid_image_url', 'Ad #{number} has an invalid image URL.', array('{number}' => $position));
+    }
+    if (!rotating_ads_valid_url($normalized['destination_url'])) {
+        $errors[] = rotating_ads_lang('rotating_ads_import_invalid_destination_url', 'Ad #{number} has an invalid destination URL.', array('{number}' => $position));
+    }
+    if ($normalized['start_at'] && $normalized['end_at'] && $normalized['end_at'] < $normalized['start_at']) {
+        $errors[] = rotating_ads_lang('rotating_ads_import_invalid_date_range', 'Ad #{number} has an end date before its start date.', array('{number}' => $position));
+    }
+    if ($normalized['country_mode'] !== 'all' && $normalized['country_codes'] === '') {
+        $errors[] = rotating_ads_lang('rotating_ads_import_country_codes_required', 'Ad #{number} needs at least one country code for country targeting.', array('{number}' => $position));
+    }
+
+    return $normalized;
+}
+
+function rotating_ads_import_json($json, $replace_existing = false)
+{
+    global $db;
+
+    $decoded = json_decode((string)$json, true);
+    if (!is_array($decoded)) {
+        return array(
+            'imported' => 0,
+            'errors' => array(rotating_ads_lang('rotating_ads_import_invalid_json', 'Enter a valid JSON backup.'))
+        );
+    }
+
+    $ads = isset($decoded['ads']) ? $decoded['ads'] : $decoded;
+    if (!is_array($ads)) {
+        return array(
+            'imported' => 0,
+            'errors' => array(rotating_ads_lang('rotating_ads_import_missing_ads', 'The backup does not contain an ads list.'))
+        );
+    }
+
+    $errors = array();
+    $normalized_ads = array();
+    $position = 1;
+    foreach ($ads as $ad) {
+        $normalized = rotating_ads_normalize_import_ad($ad, $position, $errors);
+        if ($normalized !== null) {
+            $normalized_ads[] = $normalized;
+        }
+        ++$position;
+    }
+
+    if (!empty($errors)) {
+        return array('imported' => 0, 'errors' => $errors);
+    }
+
+    rotating_ads_ensure_storage();
+    if ($replace_existing) {
+        $db->delete_query('rotating_ads', '1=1');
+    }
+
+    foreach ($normalized_ads as $ad) {
+        $data = rotating_ads_prepare_ad_for_database($ad);
+        $data['impressions'] = (int)$ad['impressions'];
+        $data['clicks'] = (int)$ad['clicks'];
+        $db->insert_query('rotating_ads', $data);
+    }
+
+    return array('imported' => count($normalized_ads), 'errors' => array());
 }
 
 function rotating_ads_valid_url($url)
@@ -890,6 +1036,11 @@ function rotating_ads_admin_page()
     $action = isset($mybb->input['action']) ? $mybb->input['action'] : '';
     $aid = isset($mybb->input['aid']) ? (int)$mybb->input['aid'] : 0;
 
+    if ($action === 'backup') {
+        rotating_ads_admin_backup_page();
+        exit;
+    }
+
     if ($action === 'delete') {
         $query = $db->simple_select('rotating_ads', 'aid, alt_text', "aid='{$aid}'", array('limit' => 1));
         $ad = $db->fetch_array($query);
@@ -900,6 +1051,10 @@ function rotating_ads_admin_page()
 
         if ($mybb->request_method === 'post') {
             verify_post_check($mybb->get_input('my_post_key'));
+            if (isset($mybb->input['no'])) {
+                admin_redirect('index.php?module=config-rotating_ads');
+            }
+
             $db->delete_query('rotating_ads', "aid='{$aid}'", 1);
             flash_message(rotating_ads_lang('rotating_ads_deleted', 'The ad was deleted.'), 'success');
             admin_redirect('index.php?module=config-rotating_ads');
@@ -976,8 +1131,118 @@ function rotating_ads_admin_tabs()
             'title' => rotating_ads_lang('rotating_ads_add_ad', 'Add ad'),
             'link' => 'index.php?module=config-rotating_ads&amp;action=add',
             'description' => rotating_ads_lang('rotating_ads_add_ad_description', 'Add a square or banner ad.')
+        ),
+        'rotating_ads_backup' => array(
+            'title' => rotating_ads_lang('rotating_ads_backup_restore', 'Backup & restore'),
+            'link' => 'index.php?module=config-rotating_ads&amp;action=backup',
+            'description' => rotating_ads_lang('rotating_ads_backup_restore_description', 'Export or import all ads as a JSON backup.')
         )
     );
+}
+
+function rotating_ads_admin_backup_page()
+{
+    global $mybb, $page;
+
+    $errors = array();
+    if ($mybb->request_method === 'post') {
+        verify_post_check($mybb->get_input('my_post_key'));
+        $backup_action = $mybb->get_input('backup_action');
+
+        if ($backup_action === 'export') {
+            $filename = 'rotating-ads-backup-' . gmdate('Ymd-His') . '.json';
+            header('Content-Type: application/json; charset=UTF-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            echo rotating_ads_export_json();
+            exit;
+        }
+
+        if ($backup_action === 'import') {
+            $import_json = $mybb->get_input('import_json');
+            $upload = isset($_FILES['import_file']) ? $_FILES['import_file'] : array();
+
+            if (!empty($upload) && isset($upload['error']) && (int)$upload['error'] !== UPLOAD_ERR_NO_FILE) {
+                if ((int)$upload['error'] !== UPLOAD_ERR_OK) {
+                    $errors[] = rotating_ads_lang('rotating_ads_import_upload_failed', 'The backup file could not be uploaded.');
+                } elseif ((int)$upload['size'] > 5 * 1024 * 1024) {
+                    $errors[] = rotating_ads_lang('rotating_ads_import_upload_too_large', 'The backup file must be 5 MB or smaller.');
+                } elseif (empty($upload['tmp_name']) || !is_uploaded_file($upload['tmp_name'])) {
+                    $errors[] = rotating_ads_lang('rotating_ads_import_upload_failed', 'The backup file could not be uploaded.');
+                } else {
+                    $uploaded_json = file_get_contents($upload['tmp_name']);
+                    if ($uploaded_json === false) {
+                        $errors[] = rotating_ads_lang('rotating_ads_import_upload_failed', 'The backup file could not be read.');
+                    } else {
+                        $import_json = $uploaded_json;
+                    }
+                }
+            }
+
+            if (empty($errors)) {
+                $result = rotating_ads_import_json(
+                    $import_json,
+                    $mybb->get_input('replace_existing') ? true : false
+                );
+                $errors = $result['errors'];
+            }
+
+            if (empty($errors)) {
+                flash_message(
+                    rotating_ads_lang('rotating_ads_import_success', 'Imported {count} ads.', array('{count}' => (int)$result['imported'])),
+                    'success'
+                );
+                admin_redirect('index.php?module=config-rotating_ads');
+            }
+
+        }
+    }
+
+    $page->add_breadcrumb_item(rotating_ads_lang('rotating_ads_manage_ads', 'Rotating Ads'), 'index.php?module=config-rotating_ads');
+    $page->add_breadcrumb_item(rotating_ads_lang('rotating_ads_backup_restore', 'Backup & restore'));
+    $page->output_header(rotating_ads_lang('rotating_ads_backup_restore', 'Backup & restore'));
+    $page->output_nav_tabs(rotating_ads_admin_tabs(), 'rotating_ads_backup');
+
+    if (!empty($errors)) {
+        $page->output_inline_error($errors);
+    }
+
+    $export_form = new Form('index.php?module=config-rotating_ads&amp;action=backup', 'post', 'rotating_ads_export');
+    echo $export_form->generate_hidden_field('backup_action', 'export');
+    $export_container = new FormContainer(rotating_ads_lang('rotating_ads_export_ads', 'Export ads'));
+    $export_container->output_row(
+        rotating_ads_lang('rotating_ads_export_json', 'JSON backup'),
+        rotating_ads_lang('rotating_ads_export_json_description', 'Download all current ads, including delivery settings and metrics, as one JSON file.'),
+        $export_form->generate_submit_button(rotating_ads_lang('rotating_ads_download_backup', 'Download backup'))
+    );
+    $export_container->end();
+    $export_form->end();
+
+    $import_form = new Form('index.php?module=config-rotating_ads&amp;action=backup', 'post', 'rotating_ads_import', true);
+    echo $import_form->generate_hidden_field('backup_action', 'import');
+    $import_container = new FormContainer(rotating_ads_lang('rotating_ads_import_ads', 'Import ads'));
+    $import_container->output_row(
+        rotating_ads_lang('rotating_ads_import_file', 'Backup file'),
+        rotating_ads_lang('rotating_ads_import_file_description', 'Select a Rotating Ads JSON backup (maximum 5 MB). A selected file takes precedence over pasted JSON.'),
+        $import_form->generate_file_upload_box('import_file', array('id' => 'import_file')),
+        'import_file'
+    );
+    $import_container->output_row(
+        rotating_ads_lang('rotating_ads_import_json', 'Paste JSON (optional)'),
+        rotating_ads_lang('rotating_ads_import_json_description', 'Alternatively, paste a Rotating Ads JSON backup. Imported ads are validated before any changes are saved.'),
+        $import_form->generate_text_area('import_json', $mybb->get_input('import_json'), array('rows' => 12, 'cols' => 80)),
+        'import_json'
+    );
+    $import_container->output_row(
+        rotating_ads_lang('rotating_ads_replace_existing', 'Replace existing ads'),
+        '',
+        $import_form->generate_check_box('replace_existing', 1, rotating_ads_lang('rotating_ads_replace_existing_description', 'Delete current ads before importing the backup.'))
+        . '<br /><br />'
+        . $import_form->generate_submit_button(rotating_ads_lang('rotating_ads_import_backup', 'Import backup'))
+    );
+    $import_container->end();
+    $import_form->end();
+
+    $page->output_footer();
 }
 
 function rotating_ads_admin_form($action, $aid = 0)
@@ -1302,11 +1567,13 @@ function rotating_ads_parse_id_list($value)
     return array_values(array_unique($ids));
 }
 
-function rotating_ads_lang($key, $fallback)
+function rotating_ads_lang($key, $fallback, $replacements = array())
 {
     global $lang;
 
-    return isset($lang->$key) ? $lang->$key : $fallback;
+    $value = isset($lang->$key) ? $lang->$key : $fallback;
+
+    return !empty($replacements) ? strtr($value, $replacements) : $value;
 }
 
 function rotating_ads_rebuild_settings()

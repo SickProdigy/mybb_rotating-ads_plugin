@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 - 2026-09-17
+
+- Added an Admin CP Backup & restore tab for exporting all ads as JSON and importing them together by file upload or pasted JSON.
+- Validates imported ad URLs, date ranges, and country targeting before saving any restored records.
+- Standardized the plugin metadata website link to the public GitHub mirror.
+
 ## 1.0.0 - 2026-09-10
 
 - Marked the database-backed Rotating Ads manager as the initial stable release.
