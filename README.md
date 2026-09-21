@@ -53,7 +53,7 @@ Delivery weight is relative: ads with the default weight of `1` have equal odds,
 
 Image and destination fields accept full HTTP(S) URLs or site-relative paths beginning with `/`. For example, an image stored beneath the forum installation can use `/images/sponsored/ad-hostpro.jpg` when the forum is installed at the site root.
 
-Country targeting reads the first valid country code supplied by `CF-IPCountry`, `GEOIP_COUNTRY_CODE`, or `X-AppEngine-Country`. An allowlist does not deliver when no country code is available; a blocklist does. The plugin does not call an external geolocation service.
+Country targeting reads the first valid country code supplied by `CF-IPCountry`, `GEOIP_COUNTRY_CODE`, or `X-AppEngine-Country`. When those headers are unavailable, it falls back to the first browser language region in `Accept-Language`, such as `en-US`. An allowlist does not deliver when no country signal is available; a blocklist does. The plugin does not call an external geolocation service.
 
 General display and timing options remain under **Configuration -> Settings -> Rotating Ads**.
 That page also displays the two supported template variables as read-only values; the plugin never inserts an ad slot into the index or another template automatically.

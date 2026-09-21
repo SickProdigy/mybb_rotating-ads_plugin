@@ -378,7 +378,7 @@ rotating_ads_test_assert(
 $info = rotating_ads_info();
 rotating_ads_test_assert(
     $info['name'] === 'Rotating Ads'
-    && $info['version'] === '1.0.1'
+    && $info['version'] === '1.0.2'
     && $info['website'] === 'https://github.com/sickprodigy/mybb_rotating-ads_plugin'
     && $info['authorsite'] === 'https://www.sickgaming.net',
     'plugin info should expose localized metadata and version'
@@ -486,8 +486,9 @@ rotating_ads_test_assert(
 );
 rotating_ads_test_assert(
     rotating_ads_country_code(array('HTTP_CF_IPCOUNTRY' => 'us')) === 'US'
-    && rotating_ads_country_code(array('GEOIP_COUNTRY_CODE' => 'ca')) === 'CA',
-    'country detection should support common trusted server headers'
+    && rotating_ads_country_code(array('GEOIP_COUNTRY_CODE' => 'ca')) === 'CA'
+    && rotating_ads_country_code(array('HTTP_ACCEPT_LANGUAGE' => 'en-US,en;q=0.9')) === 'US',
+    'country detection should support common trusted server headers and browser language regions'
 );
 
 $campaign = array(
@@ -506,6 +507,12 @@ rotating_ads_test_assert(
     && !rotating_ads_ad_is_eligible($campaign, TIME_NOW, 'GB'),
     'country allowlists should include only matching visitors'
 );
+$_SERVER['HTTP_ACCEPT_LANGUAGE'] = 'en-US,en;q=0.9';
+rotating_ads_test_assert(
+    rotating_ads_ad_is_eligible($campaign, TIME_NOW, null),
+    'country allowlists should use the browser language region when server country headers are absent'
+);
+unset($_SERVER['HTTP_ACCEPT_LANGUAGE']);
 $campaign['country_mode'] = 'block';
 rotating_ads_test_assert(
     !rotating_ads_ad_is_eligible($campaign, TIME_NOW, 'CA')
@@ -673,7 +680,7 @@ $export = json_decode(rotating_ads_export_json(), true);
 rotating_ads_test_assert(
     isset($export['ads'])
     && count($export['ads']) === count($db->ads)
-    && $export['version'] === '1.0.1',
+    && $export['version'] === '1.0.2',
     'ad export should bundle all records with plugin version metadata'
 );
 

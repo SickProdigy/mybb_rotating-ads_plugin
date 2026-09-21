@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2 - 2026-09-20
+
+- Added the browser language region as a fallback for country-targeted ads when no server or proxy country header is available.
+
 ## 1.0.1 - 2026-09-17
 
 - Added an Admin CP Backup & restore tab for exporting all ads as JSON and importing them together by file upload or pasted JSON.

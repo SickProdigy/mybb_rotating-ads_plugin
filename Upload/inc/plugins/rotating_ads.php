@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://github.com/sickprodigy/mybb_rotating-ads_plugin',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '1.0.1',
+        'version' => '1.0.2',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -485,7 +485,7 @@ function rotating_ads_export_bundle()
 
     return array(
         'generator' => 'mybb_rotating_ads',
-        'version' => '1.0.1',
+        'version' => '1.0.2',
         'exported_at' => gmdate('c'),
         'ads' => $ads
     );
@@ -623,6 +623,16 @@ function rotating_ads_country_code($server = null)
         $code = isset($server[$key]) ? strtoupper(trim($server[$key])) : '';
         if (preg_match('/^[A-Z]{2}$/', $code)) {
             return $code;
+        }
+    }
+
+    $language = isset($server['HTTP_ACCEPT_LANGUAGE']) ? (string)$server['HTTP_ACCEPT_LANGUAGE'] : '';
+    if (preg_match_all('/(?:^|,)\s*[a-z]{2,3}-([A-Z]{2})\b/i', $language, $matches)) {
+        foreach ($matches[1] as $code) {
+            $code = strtoupper($code);
+            if (preg_match('/^[A-Z]{2}$/', $code)) {
+                return $code;
+            }
         }
     }
 
@@ -1406,7 +1416,7 @@ function rotating_ads_admin_form($action, $aid = 0)
     );
     $container->output_row(
         rotating_ads_lang('rotating_ads_country_mode', 'Country targeting'),
-        rotating_ads_lang('rotating_ads_country_mode_description', 'Allow or block countries when your server or proxy provides a visitor country code.'),
+        rotating_ads_lang('rotating_ads_country_mode_description', 'Allow or block countries when your server/proxy provides a visitor country code, with the browser language region as a fallback.'),
         $form->generate_select_box('country_mode', array(
             'all' => rotating_ads_lang('rotating_ads_country_all', 'All countries'),
             'allow' => rotating_ads_lang('rotating_ads_country_allow', 'Only listed countries'),
