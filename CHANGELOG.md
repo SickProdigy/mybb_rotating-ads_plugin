@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.4 - 2026-10-01
+
+- Expanded the README into a complete settings reference with country detection, local MaxMind setup, and visitor IP source guidance.
+- Added official GeoLite2 download and update instructions.
+- Clarified the Visitor IP source labels and Admin CP help while keeping `REMOTE_ADDR` as the recommended default.
+- Added a MaxMind status checker for the resolved path, file readability, PHP reader, and database validity.
+- Bundled MaxMind official pure-PHP DB reader 1.14.0 for local lookups without Composer, a compiled extension, or an autoloader-path setting.
+- Removed the obsolete MaxMind reader autoload setting during settings synchronization.
+
 ## 1.0.3 - 2026-09-20
 
 - Added configurable country detection using trusted headers, a local MaxMind-compatible database, or the browser language region.

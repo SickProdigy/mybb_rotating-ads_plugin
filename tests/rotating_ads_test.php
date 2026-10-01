@@ -210,6 +210,12 @@ class RotatingAdsTestDatabase
         }
 
         if ($table === 'settings') {
+            if (preg_match("/name='([^']+)'/", $where, $matches)) {
+                $name = isset($matches[1]) ? stripslashes($matches[1]) : '';
+                unset($this->settings[$name]);
+                return;
+            }
+
             $this->settings = array();
         }
 
@@ -344,7 +350,6 @@ $mybb = (object)array(
         'rotating_ads_rotation_max_seconds' => '30',
         'rotating_ads_country_detection' => 'auto',
         'rotating_ads_maxmind_database_path' => '',
-        'rotating_ads_maxmind_autoload_path' => '',
         'rotating_ads_visitor_ip_source' => 'remote_addr',
     ),
     'user' => array(
@@ -382,7 +387,7 @@ rotating_ads_test_assert(
 $info = rotating_ads_info();
 rotating_ads_test_assert(
     $info['name'] === 'Rotating Ads'
-    && $info['version'] === '1.0.3'
+    && $info['version'] === '1.0.4'
     && $info['website'] === 'https://github.com/sickprodigy/mybb_rotating-ads_plugin'
     && $info['authorsite'] === 'https://www.sickgaming.net',
     'plugin info should expose localized metadata and version'
@@ -519,6 +524,16 @@ $maxmind_reader = new class {
     }
 };
 rotating_ads_test_assert(
+    rotating_ads_maxmind_database_path('/inc/geoip') === MYBB_ROOT . 'inc/geoip/GeoLite2-Country.mmdb'
+    && rotating_ads_maxmind_database_path('/inc/geoip/GeoLite2-Country.mmdb') === MYBB_ROOT . 'inc/geoip/GeoLite2-Country.mmdb',
+    'MaxMind database paths under inc should resolve from the MyBB board root'
+);
+rotating_ads_test_assert(
+    PHP_VERSION_ID < 70200
+    || (rotating_ads_load_maxmind_reader() && class_exists('MaxMind\\Db\\Reader')),
+    'the bundled MaxMind reader should load without Composer on supported PHP versions'
+);
+rotating_ads_test_assert(
     rotating_ads_maxmind_country_code('203.0.113.4', $maxmind_fixture, function ($path) use ($maxmind_reader) {
         return $maxmind_reader;
     }) === 'DE'
@@ -599,6 +614,12 @@ $mybb->settings['rotating_ads_rotation_min_seconds'] = '15';
 $mybb->settings['rotating_ads_rotation_max_seconds'] = '30';
 
 rotating_ads_ensure_storage();
+$db->insert_query('settings', array(
+    'name' => 'rotating_ads_maxmind_autoload_path',
+    'title' => 'Legacy MaxMind reader autoload path',
+    'value' => '/legacy/vendor/autoload.php',
+    'gid' => 12,
+));
 rotating_ads_ensure_settings();
 $db->insert_query('rotating_ads', rotating_ads_prepare_ad_for_database(array(
     'slot' => 'square',
@@ -619,8 +640,8 @@ rotating_ads_test_assert(
     && isset($db->settings['rotating_ads_rotation_max_seconds'])
     && isset($db->settings['rotating_ads_country_detection'])
     && isset($db->settings['rotating_ads_maxmind_database_path'])
-    && isset($db->settings['rotating_ads_maxmind_autoload_path'])
-    && isset($db->settings['rotating_ads_visitor_ip_source']),
+    && isset($db->settings['rotating_ads_visitor_ip_source'])
+    && !isset($db->settings['rotating_ads_maxmind_autoload_path']),
     'setting synchronization should create polish settings'
 );
 rotating_ads_test_assert(
@@ -731,7 +752,7 @@ $export = json_decode(rotating_ads_export_json(), true);
 rotating_ads_test_assert(
     isset($export['ads'])
     && count($export['ads']) === count($db->ads)
-    && $export['version'] === '1.0.3',
+    && $export['version'] === '1.0.4',
     'ad export should bundle all records with plugin version metadata'
 );
 

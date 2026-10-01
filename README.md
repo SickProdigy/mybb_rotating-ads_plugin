@@ -55,24 +55,64 @@ Image and destination fields accept full HTTP(S) URLs or site-relative paths beg
 
 Country targeting is configurable. The default automatic order reads country headers supplied by Cloudflare, a server GeoIP module, App Engine, CloudFront, Fastly, or Vercel; then queries an optional local MaxMind-compatible database; and finally uses the first browser language region in `Accept-Language`, such as `en-US`. An allowlist does not deliver when no country signal is available; a blocklist does. The plugin never calls an external geolocation service.
 
-Local GeoIP lookups require the official `maxmind-db/reader` PHP library and a readable GeoLite2 or GeoIP2 Country/City `.mmdb` file. Install the reader in the forum root with Composer, or provide the absolute path to its `autoload.php` file in the plugin settings. Database downloads and updates remain under the administrator's control. `REMOTE_ADDR` is the safe default IP source; select a forwarded header only when a trusted proxy overwrites it.
+## Settings reference
 
-General display and timing options remain under **Configuration -> Settings -> Rotating Ads**.
-That page also displays the two supported template variables as read-only values; the plugin never inserts an ad slot into the index or another template automatically.
+Rotating Ads settings live in **Admin CP -> Configuration -> Settings -> Rotating Ads**. Individual advertisements are managed separately under **Admin CP -> Configuration -> Rotating Ads**.
 
-Additional settings:
+| Setting | Purpose | Default |
+| --- | --- | --- |
+| Template variables | Shows the `{$rotating_ads_square}` and `{$rotating_ads_banner}` variables to place in theme templates. This is a read-only reference. | No value |
+| Sponsor label | Text displayed above each ad. Leave blank to hide the label. | `Sponsored` |
+| Hide ads from usergroups | Comma-separated primary or additional usergroup IDs that should not see either ad slot. Leave blank to show ads to every group. | Empty |
+| Load plugin CSS | Loads the maintained responsive ad stylesheet. Disable it when the active theme supplies all ad styling. | Yes |
+| Open ads in a new tab | Adds new-tab behavior to advertisement links. | Yes |
+| Show destination in tracked links | Adds a readable `to=example.com` hostname to tracked click URLs so visitors can recognize the destination. | Yes |
+| Rotate ads while viewing a page | Uses JavaScript to cycle through eligible ads without a page reload. A slot with fewer than two ads remains static, as does the page for visitors without JavaScript. | No |
+| Minimum rotation seconds | Shortest time an ad remains visible during browser-side rotation. | `15` |
+| Maximum rotation seconds | Longest rotation delay. A value below the minimum is treated as the minimum. | `30` |
+| Country detection | Selects how the plugin resolves the two-letter country code used by ad allowlists and blocklists. See [Country detection options](#country-detection-options). | Automatic |
+| MaxMind database path | MyBB-root-relative database file or directory. The recommended `/inc/geoip` directory automatically selects `GeoLite2-Country.mmdb`. Leave blank to skip local lookups. | Empty |
+| Visitor IP source | Selects the address used only for local MaxMind lookups. See [Visitor IP source options](#visitor-ip-source-options). | `REMOTE_ADDR` |
 
-- `Sponsor label`: Optional text displayed above each ad. Leave blank to hide it.
-- `Hide ads from usergroups`: Comma-separated primary or additional usergroup IDs that should not see ads.
-- `Load plugin CSS`: Disable if your theme provides its own ad styling.
-- `Open ads in a new tab`: Controls whether links include `target="_blank"`.
-- `Show destination in tracked links`: Adds a readable `to=example.com` hostname to click-tracking URLs. Disable it for shorter tracked links.
-- `Rotate ads while viewing a page`: Enables JavaScript-powered browser-side cycling when a slot has at least two enabled ads.
-- `Minimum rotation seconds` / `Maximum rotation seconds`: Controls the random delay range between ad changes. If maximum is below minimum, the plugin treats it as the minimum.
-- `Country detection`: Uses the automatic provider chain, one specific provider, or disables detection.
-- `MaxMind database path`: Absolute path to a local GeoLite2 or GeoIP2 `.mmdb` database.
-- `MaxMind reader autoload path`: Optional path to the official reader's `autoload.php`; the forum root Composer autoloader is detected automatically.
-- `Visitor IP source`: Selects the address used for local database lookups. Forwarded headers must only be trusted behind a configured proxy.
+### Country detection options
+
+Country targeting controls whether an advertisement is eligible; it does not change the advertisement content. An allowlist does not deliver when no country can be resolved, while a blocklist remains eligible. No mode calls an external geolocation service.
+
+| Option | Behavior |
+| --- | --- |
+| Headers, then MaxMind, then browser language | Recommended automatic chain. It first checks trusted country headers, then the configured local MaxMind database, and finally a region in `Accept-Language`. |
+| Server/proxy headers only | Checks country codes supplied by Cloudflare, a server GeoIP module, App Engine, CloudFront, Fastly, or Vercel. Use when the origin trusts and receives one of those headers. |
+| MaxMind database only | Looks up the selected visitor IP in the configured local `.mmdb` database. It requires both the database file and the official `maxmind-db/reader` PHP library. |
+| Browser language region only | Uses the first regional browser language, such as `US` from `en-US`. This is a preference signal and may not represent the visitor physical location. |
+| Disabled | Resolves no country. Country allowlisted ads do not deliver; blocklisted ads remain eligible because no blocked country was identified. |
+
+### Local MaxMind setup
+
+The free **GeoLite2 Country** database is sufficient for this plugin. Obtain it from the [official MaxMind GeoLite page](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data/):
+
+1. Create or sign in to a free MaxMind account.
+2. From the account portal, request access to GeoLite and complete any required enrollment steps. The database downloads appear after MaxMind enables GeoLite access for the account.
+3. On **Download files**, find **GeoLite Country** with edition ID `GeoLite2-Country` and format **GeoIP2 Binary (.mmdb)**, then select **Download GZIP**. Do not choose GeoLite ASN or a CSV-format download. GeoLite City also works, but it is larger and provides location detail this plugin does not use. After extracting the download, the database file should be named `GeoLite2-Country.mmdb`. Create `inc/geoip` under the MyBB board root and place the file there, producing `inc/geoip/GeoLite2-Country.mmdb`.
+4. Enter `/inc/geoip` in **MaxMind database path**. A path beginning with `/inc` is resolved from the MyBB board root, and a directory path automatically uses the filename `GeoLite2-Country.mmdb`. `/inc/geoip/GeoLite2-Country.mmdb` is also accepted.
+5. For automated downloads, generate a MaxMind license key and configure `geoipupdate`. The license key authenticates database downloads; the plugin does not use it and does not call a MaxMind lookup API.
+6. Keep the database current. MaxMind requires GeoLite users to replace old data after new releases.
+
+Rotating Ads includes MaxMind official pure-PHP reader, so no Composer command, PHP extension, API service, or reader-path setting is required. The bundled reader requires PHP 7.2 or newer. If a forum-root Composer installation already provides the reader, it is detected before the bundled copy. A paid GeoIP2 Country or City `.mmdb` file can be used the same way.
+
+The plugin performs only local database reads and sends no visitor address to MaxMind. If the reader, autoloader, database, IP address, or lookup is unavailable, the lookup returns no country instead of interrupting the forum page. Use **Check MaxMind setup** beside the database-path setting, or open the **MaxMind status** tab under **Configuration -> Rotating Ads**, to verify the resolved filename, file readability, PHP reader, and database format.
+
+### Visitor IP source options
+
+This setting supplies the address used only for the optional local MaxMind lookup. It does not affect country codes supplied directly by a CDN, proxy, hosting platform, or server GeoIP module. Most administrators should keep `REMOTE_ADDR`.
+
+| Option | When to use it |
+| --- | --- |
+| `REMOTE_ADDR (recommended)` | Use for a directly hosted forum and whenever you are unsure. It reads the address connected to the web server and cannot be replaced by a visitor-supplied HTTP header. Behind a proxy, it may identify the proxy instead of the visitor. |
+| `CF-Connecting-IP (Cloudflare only)` | Use when the origin accepts traffic through Cloudflare and Cloudflare overwrites this header with the visitor address. Restrict origin access to Cloudflare so visitors cannot bypass it and supply their own value. |
+| `X-Forwarded-For (trusted proxy only)` | Use only when a trusted reverse proxy or load balancer overwrites or sanitizes this header. The plugin uses the first valid address in its comma-separated list. Do not use it when visitors can connect directly to the origin and supply the header themselves. |
+| `X-Real-IP (trusted proxy only)` | Use when a trusted reverse proxy, commonly Nginx, deliberately overwrites this header with the visitor address. Do not select it merely because the header is present. |
+
+Forwarded IP headers are not trustworthy by themselves. If a visitor can supply or preserve the selected header, they can influence country targeting. Keep `REMOTE_ADDR` unless the forum is behind a proxy you control or a trusted service whose connection to the origin is enforced.
 
 ## Output
 

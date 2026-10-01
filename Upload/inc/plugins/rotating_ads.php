@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://github.com/sickprodigy/mybb_rotating-ads_plugin',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '1.0.3',
+        'version' => '1.0.4',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -311,28 +311,19 @@ function rotating_ads_ensure_settings()
         array(
             'name' => 'rotating_ads_maxmind_database_path',
             'title' => rotating_ads_lang('rotating_ads_maxmind_database_path', 'MaxMind database path'),
-            'description' => rotating_ads_lang('rotating_ads_maxmind_database_path_description', 'Absolute path to a readable GeoLite2 or GeoIP2 Country/City .mmdb file. Leave blank to skip local database lookups.'),
+            'description' => rotating_ads_lang('rotating_ads_maxmind_database_path_description', 'Place GeoLite2-Country.mmdb in the MyBB inc/geoip directory, then enter /inc/geoip here. The path is relative to the board root and the filename is added automatically. <a href="https://dev.maxmind.com/geoip/geolite2-free-geolocation-data/" target="_blank" rel="noopener noreferrer">Download GeoLite2 Country (.mmdb)</a>. Leave blank to disable local lookup. <a href="index.php?module=config-rotating_ads&amp;action=maxmind_status">Check MaxMind setup</a>.'),
             'optionscode' => 'text',
             'value' => '',
             'disporder' => 11,
             'gid' => $gid
         ),
         array(
-            'name' => 'rotating_ads_maxmind_autoload_path',
-            'title' => rotating_ads_lang('rotating_ads_maxmind_autoload_path', 'MaxMind reader autoload path'),
-            'description' => rotating_ads_lang('rotating_ads_maxmind_autoload_path_description', 'Optional absolute path to the MaxMind DB Reader autoload.php file. The forum root vendor/autoload.php is also detected automatically.'),
-            'optionscode' => 'text',
-            'value' => '',
-            'disporder' => 12,
-            'gid' => $gid
-        ),
-        array(
             'name' => 'rotating_ads_visitor_ip_source',
             'title' => rotating_ads_lang('rotating_ads_visitor_ip_source', 'Visitor IP source'),
-            'description' => rotating_ads_lang('rotating_ads_visitor_ip_source_description', 'Use REMOTE_ADDR unless the forum is behind a trusted proxy that overwrites the selected header.'),
-            'optionscode' => "select\nremote_addr=REMOTE_ADDR\ncf_connecting_ip=CF-Connecting-IP\nx_forwarded_for=X-Forwarded-For\nx_real_ip=X-Real-IP",
+            'description' => rotating_ads_lang('rotating_ads_visitor_ip_source_description', 'Used only for local MaxMind lookups. Most sites should keep REMOTE_ADDR. Select another source only when a trusted proxy overwrites that header; otherwise visitors may spoof their country.'),
+            'optionscode' => "select\nremote_addr=REMOTE_ADDR (recommended)\ncf_connecting_ip=CF-Connecting-IP (Cloudflare only)\nx_forwarded_for=X-Forwarded-For (trusted proxy only)\nx_real_ip=X-Real-IP (trusted proxy only)",
             'value' => 'remote_addr',
-            'disporder' => 13,
+            'disporder' => 12,
             'gid' => $gid
         )
     );
@@ -349,6 +340,7 @@ function rotating_ads_ensure_settings()
         }
     }
 
+    $db->delete_query('settings', "name='rotating_ads_maxmind_autoload_path'");
     rotating_ads_rebuild_settings();
 }
 
@@ -526,7 +518,7 @@ function rotating_ads_export_bundle()
 
     return array(
         'generator' => 'mybb_rotating_ads',
-        'version' => '1.0.3',
+        'version' => '1.0.4',
         'exported_at' => gmdate('c'),
         'ads' => $ads
     );
@@ -775,11 +767,11 @@ function rotating_ads_load_maxmind_reader()
     }
 
     $paths = array();
-    if (isset($mybb->settings['rotating_ads_maxmind_autoload_path'])) {
-        $paths[] = trim((string)$mybb->settings['rotating_ads_maxmind_autoload_path']);
-    }
     if (defined('MYBB_ROOT')) {
         $paths[] = MYBB_ROOT . 'vendor/autoload.php';
+    }
+    if (PHP_VERSION_ID >= 70200) {
+        $paths[] = __DIR__ . '/rotating_ads/maxmind-db-reader/autoload.php';
     }
 
     foreach (array_unique($paths) as $path) {
@@ -794,8 +786,27 @@ function rotating_ads_load_maxmind_reader()
     return false;
 }
 
+function rotating_ads_maxmind_database_path($path)
+{
+    $path = trim((string)$path);
+    if ($path === '') {
+        return '';
+    }
+
+    if (!is_file($path) && strtolower(substr($path, -5)) !== '.mmdb') {
+        $path = rtrim($path, '/') . '/GeoLite2-Country.mmdb';
+    }
+
+    if (defined('MYBB_ROOT') && ($path === '/inc' || strpos($path, '/inc/') === 0)) {
+        $path = MYBB_ROOT . ltrim($path, '/');
+    }
+
+    return $path;
+}
+
 function rotating_ads_maxmind_country_code($ip, $database_path, $reader_factory = null)
 {
+    $database_path = rotating_ads_maxmind_database_path($database_path);
     if (filter_var($ip, FILTER_VALIDATE_IP) === false
         || $database_path === ''
         || !is_file($database_path)
@@ -1244,6 +1255,11 @@ function rotating_ads_admin_page()
         exit;
     }
 
+    if ($action === 'maxmind_status') {
+        rotating_ads_admin_maxmind_status_page();
+        exit;
+    }
+
     if ($action === 'delete') {
         $query = $db->simple_select('rotating_ads', 'aid, alt_text', "aid='{$aid}'", array('limit' => 1));
         $ad = $db->fetch_array($query);
@@ -1339,8 +1355,72 @@ function rotating_ads_admin_tabs()
             'title' => rotating_ads_lang('rotating_ads_backup_restore', 'Backup & restore'),
             'link' => 'index.php?module=config-rotating_ads&amp;action=backup',
             'description' => rotating_ads_lang('rotating_ads_backup_restore_description', 'Export or import all ads as a JSON backup.')
+        ),
+        'rotating_ads_maxmind_status' => array(
+            'title' => rotating_ads_lang('rotating_ads_maxmind_status', 'MaxMind status'),
+            'link' => 'index.php?module=config-rotating_ads&amp;action=maxmind_status',
+            'description' => rotating_ads_lang('rotating_ads_maxmind_status_description', 'Check the configured database path and PHP reader.')
         )
     );
+}
+
+function rotating_ads_admin_maxmind_status_page()
+{
+    global $mybb, $page;
+
+    $configured_path = isset($mybb->settings['rotating_ads_maxmind_database_path'])
+        ? trim((string)$mybb->settings['rotating_ads_maxmind_database_path'])
+        : '';
+    $resolved_path = rotating_ads_maxmind_database_path($configured_path);
+    $file_ready = $resolved_path !== '' && is_file($resolved_path) && is_readable($resolved_path);
+    $reader_ready = rotating_ads_load_maxmind_reader();
+    $database_detail = rotating_ads_lang('rotating_ads_maxmind_not_tested', 'Not tested because the file or reader is unavailable.');
+
+    if ($file_ready && $reader_ready) {
+        $reader = null;
+        try {
+            $reader = new \MaxMind\Db\Reader($resolved_path);
+            $metadata = $reader->metadata();
+            $database_type = isset($metadata->databaseType) ? (string)$metadata->databaseType : '';
+            $database_detail = rotating_ads_lang('rotating_ads_maxmind_valid', 'Valid database');
+            if ($database_type !== '') {
+                $database_detail .= ': ' . $database_type;
+            }
+        } catch (Exception $exception) {
+            $database_detail = rotating_ads_lang('rotating_ads_maxmind_invalid', 'The database could not be opened: {error}', array(
+                '{error}' => $exception->getMessage()
+            ));
+        }
+        if (is_object($reader) && method_exists($reader, 'close')) {
+            $reader->close();
+        }
+    }
+
+    $page->add_breadcrumb_item(rotating_ads_lang('rotating_ads_manage_ads', 'Rotating Ads'), 'index.php?module=config-rotating_ads');
+    $page->add_breadcrumb_item(rotating_ads_lang('rotating_ads_maxmind_status', 'MaxMind status'));
+    $page->output_header(rotating_ads_lang('rotating_ads_maxmind_status', 'MaxMind status'));
+    $page->output_nav_tabs(rotating_ads_admin_tabs(), 'rotating_ads_maxmind_status');
+
+    $table = new Table;
+    $table->construct_header(rotating_ads_lang('rotating_ads_setting', 'Check'), array('width' => '30%'));
+    $table->construct_header(rotating_ads_lang('rotating_ads_status', 'Status'));
+    $table->construct_cell(rotating_ads_lang('rotating_ads_maxmind_configured_path', 'Configured path'));
+    $table->construct_cell($configured_path === '' ? rotating_ads_lang('rotating_ads_not_configured', 'Not configured') : htmlspecialchars_uni($configured_path));
+    $table->construct_row();
+    $table->construct_cell(rotating_ads_lang('rotating_ads_maxmind_resolved_path', 'Resolved database file'));
+    $table->construct_cell($resolved_path === '' ? rotating_ads_lang('rotating_ads_not_configured', 'Not configured') : htmlspecialchars_uni($resolved_path));
+    $table->construct_row();
+    $table->construct_cell(rotating_ads_lang('rotating_ads_maxmind_file_status', 'Database file'));
+    $table->construct_cell($file_ready ? rotating_ads_lang('rotating_ads_found_readable', 'Found and readable') : rotating_ads_lang('rotating_ads_missing_unreadable', 'Missing or not readable'));
+    $table->construct_row();
+    $table->construct_cell(rotating_ads_lang('rotating_ads_maxmind_reader_status', 'PHP reader'));
+    $table->construct_cell($reader_ready ? rotating_ads_lang('rotating_ads_available', 'Available') : rotating_ads_lang('rotating_ads_unavailable', 'Not available. The bundled reader requires PHP 7.2 or newer; otherwise verify the bundled files or configure an external autoloader.'));
+    $table->construct_row();
+    $table->construct_cell(rotating_ads_lang('rotating_ads_maxmind_database_status', 'Database validation'));
+    $table->construct_cell(htmlspecialchars_uni($database_detail));
+    $table->construct_row();
+    $table->output(rotating_ads_lang('rotating_ads_maxmind_status', 'MaxMind status'));
+    $page->output_footer();
 }
 
 function rotating_ads_admin_backup_page()
