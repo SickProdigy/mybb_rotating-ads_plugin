@@ -53,7 +53,9 @@ Delivery weight is relative: ads with the default weight of `1` have equal odds,
 
 Image and destination fields accept full HTTP(S) URLs or site-relative paths beginning with `/`. For example, an image stored beneath the forum installation can use `/images/sponsored/ad-hostpro.jpg` when the forum is installed at the site root.
 
-Country targeting reads the first valid country code supplied by `CF-IPCountry`, `GEOIP_COUNTRY_CODE`, or `X-AppEngine-Country`. When those headers are unavailable, it falls back to the first browser language region in `Accept-Language`, such as `en-US`. An allowlist does not deliver when no country signal is available; a blocklist does. The plugin does not call an external geolocation service.
+Country targeting is configurable. The default automatic order reads country headers supplied by Cloudflare, a server GeoIP module, App Engine, CloudFront, Fastly, or Vercel; then queries an optional local MaxMind-compatible database; and finally uses the first browser language region in `Accept-Language`, such as `en-US`. An allowlist does not deliver when no country signal is available; a blocklist does. The plugin never calls an external geolocation service.
+
+Local GeoIP lookups require the official `maxmind-db/reader` PHP library and a readable GeoLite2 or GeoIP2 Country/City `.mmdb` file. Install the reader in the forum root with Composer, or provide the absolute path to its `autoload.php` file in the plugin settings. Database downloads and updates remain under the administrator's control. `REMOTE_ADDR` is the safe default IP source; select a forwarded header only when a trusted proxy overwrites it.
 
 General display and timing options remain under **Configuration -> Settings -> Rotating Ads**.
 That page also displays the two supported template variables as read-only values; the plugin never inserts an ad slot into the index or another template automatically.
@@ -67,6 +69,10 @@ Additional settings:
 - `Show destination in tracked links`: Adds a readable `to=example.com` hostname to click-tracking URLs. Disable it for shorter tracked links.
 - `Rotate ads while viewing a page`: Enables JavaScript-powered browser-side cycling when a slot has at least two enabled ads.
 - `Minimum rotation seconds` / `Maximum rotation seconds`: Controls the random delay range between ad changes. If maximum is below minimum, the plugin treats it as the minimum.
+- `Country detection`: Uses the automatic provider chain, one specific provider, or disables detection.
+- `MaxMind database path`: Absolute path to a local GeoLite2 or GeoIP2 `.mmdb` database.
+- `MaxMind reader autoload path`: Optional path to the official reader's `autoload.php`; the forum root Composer autoloader is detected automatically.
+- `Visitor IP source`: Selects the address used for local database lookups. Forwarded headers must only be trusted behind a configured proxy.
 
 ## Output
 

@@ -342,6 +342,10 @@ $mybb = (object)array(
         'rotating_ads_enable_rotation' => '0',
         'rotating_ads_rotation_min_seconds' => '15',
         'rotating_ads_rotation_max_seconds' => '30',
+        'rotating_ads_country_detection' => 'auto',
+        'rotating_ads_maxmind_database_path' => '',
+        'rotating_ads_maxmind_autoload_path' => '',
+        'rotating_ads_visitor_ip_source' => 'remote_addr',
     ),
     'user' => array(
         'usergroup' => 2,
@@ -378,7 +382,7 @@ rotating_ads_test_assert(
 $info = rotating_ads_info();
 rotating_ads_test_assert(
     $info['name'] === 'Rotating Ads'
-    && $info['version'] === '1.0.2'
+    && $info['version'] === '1.0.3'
     && $info['website'] === 'https://github.com/sickprodigy/mybb_rotating-ads_plugin'
     && $info['authorsite'] === 'https://www.sickgaming.net',
     'plugin info should expose localized metadata and version'
@@ -487,9 +491,52 @@ rotating_ads_test_assert(
 rotating_ads_test_assert(
     rotating_ads_country_code(array('HTTP_CF_IPCOUNTRY' => 'us')) === 'US'
     && rotating_ads_country_code(array('GEOIP_COUNTRY_CODE' => 'ca')) === 'CA'
+    && rotating_ads_country_code(array('HTTP_CLOUDFRONT_VIEWER_COUNTRY' => 'gb')) === 'GB'
     && rotating_ads_country_code(array('HTTP_ACCEPT_LANGUAGE' => 'en-US,en;q=0.9')) === 'US',
     'country detection should support common trusted server headers and browser language regions'
 );
+$mybb->settings['rotating_ads_visitor_ip_source'] = 'x_forwarded_for';
+rotating_ads_test_assert(
+    rotating_ads_visitor_ip(array('HTTP_X_FORWARDED_FOR' => '203.0.113.4, 198.51.100.8')) === '203.0.113.4',
+    'configured proxy IP sources should return the first valid forwarded address'
+);
+$mybb->settings['rotating_ads_visitor_ip_source'] = 'remote_addr';
+rotating_ads_test_assert(
+    rotating_ads_visitor_ip(array('REMOTE_ADDR' => '2001:db8::1')) === '2001:db8::1'
+    && rotating_ads_visitor_ip(array('REMOTE_ADDR' => 'not-an-ip')) === '',
+    'visitor IP detection should validate IPv4 and IPv6 addresses'
+);
+$maxmind_fixture = tempnam(sys_get_temp_dir(), 'rotating-ads-mmdb-');
+$maxmind_reader = new class {
+    public $closed = false;
+    public function get($ip)
+    {
+        return array('country' => array('iso_code' => 'de'));
+    }
+    public function close()
+    {
+        $this->closed = true;
+    }
+};
+rotating_ads_test_assert(
+    rotating_ads_maxmind_country_code('203.0.113.4', $maxmind_fixture, function ($path) use ($maxmind_reader) {
+        return $maxmind_reader;
+    }) === 'DE'
+    && $maxmind_reader->closed,
+    'MaxMind lookups should normalize country records and close the reader'
+);
+unlink($maxmind_fixture);
+$mybb->settings['rotating_ads_country_detection'] = 'headers';
+rotating_ads_test_assert(
+    rotating_ads_country_code(array('HTTP_ACCEPT_LANGUAGE' => 'en-US')) === '',
+    'headers-only detection should not use lower-priority fallbacks'
+);
+$mybb->settings['rotating_ads_country_detection'] = 'disabled';
+rotating_ads_test_assert(
+    rotating_ads_country_code(array('HTTP_CF_IPCOUNTRY' => 'US')) === '',
+    'country detection should be disableable'
+);
+$mybb->settings['rotating_ads_country_detection'] = 'auto';
 
 $campaign = array(
     'enabled' => 1,
@@ -569,7 +616,11 @@ rotating_ads_test_assert(
     && isset($db->settings['rotating_ads_reveal_destination'])
     && isset($db->settings['rotating_ads_enable_rotation'])
     && isset($db->settings['rotating_ads_rotation_min_seconds'])
-    && isset($db->settings['rotating_ads_rotation_max_seconds']),
+    && isset($db->settings['rotating_ads_rotation_max_seconds'])
+    && isset($db->settings['rotating_ads_country_detection'])
+    && isset($db->settings['rotating_ads_maxmind_database_path'])
+    && isset($db->settings['rotating_ads_maxmind_autoload_path'])
+    && isset($db->settings['rotating_ads_visitor_ip_source']),
     'setting synchronization should create polish settings'
 );
 rotating_ads_test_assert(
@@ -680,7 +731,7 @@ $export = json_decode(rotating_ads_export_json(), true);
 rotating_ads_test_assert(
     isset($export['ads'])
     && count($export['ads']) === count($db->ads)
-    && $export['version'] === '1.0.2',
+    && $export['version'] === '1.0.3',
     'ad export should bundle all records with plugin version metadata'
 );
 

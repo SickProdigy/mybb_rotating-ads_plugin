@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3 - 2026-09-20
+
+- Added configurable country detection using trusted headers, a local MaxMind-compatible database, or the browser language region.
+- Added settings for the MaxMind database, optional reader autoloader, and trusted visitor IP source.
+- Kept GeoIP failures non-blocking and omitted external API lookups.
+
 ## 1.0.2 - 2026-09-20
 
 - Added the browser language region as a fallback for country-targeted ads when no server or proxy country header is available.

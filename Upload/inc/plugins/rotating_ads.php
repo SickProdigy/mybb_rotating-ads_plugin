@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://github.com/sickprodigy/mybb_rotating-ads_plugin',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '1.0.2',
+        'version' => '1.0.3',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -293,6 +293,47 @@ function rotating_ads_ensure_settings()
             'value' => '30',
             'disporder' => 9,
             'gid' => $gid
+        ),
+        array(
+            'name' => 'rotating_ads_country_detection',
+            'title' => rotating_ads_lang('rotating_ads_country_detection', 'Country detection'),
+            'description' => rotating_ads_lang('rotating_ads_country_detection_description', 'Choose how visitor countries are resolved for country-targeted ads.'),
+            'optionscode' => "select\n"
+                . 'auto=' . rotating_ads_lang('rotating_ads_country_detection_auto', 'Headers, then MaxMind, then browser language') . "\n"
+                . 'headers=' . rotating_ads_lang('rotating_ads_country_detection_headers', 'Server/proxy headers only') . "\n"
+                . 'maxmind=' . rotating_ads_lang('rotating_ads_country_detection_maxmind', 'MaxMind database only') . "\n"
+                . 'language=' . rotating_ads_lang('rotating_ads_country_detection_language', 'Browser language region only') . "\n"
+                . 'disabled=' . rotating_ads_lang('rotating_ads_country_detection_disabled', 'Disabled'),
+            'value' => 'auto',
+            'disporder' => 10,
+            'gid' => $gid
+        ),
+        array(
+            'name' => 'rotating_ads_maxmind_database_path',
+            'title' => rotating_ads_lang('rotating_ads_maxmind_database_path', 'MaxMind database path'),
+            'description' => rotating_ads_lang('rotating_ads_maxmind_database_path_description', 'Absolute path to a readable GeoLite2 or GeoIP2 Country/City .mmdb file. Leave blank to skip local database lookups.'),
+            'optionscode' => 'text',
+            'value' => '',
+            'disporder' => 11,
+            'gid' => $gid
+        ),
+        array(
+            'name' => 'rotating_ads_maxmind_autoload_path',
+            'title' => rotating_ads_lang('rotating_ads_maxmind_autoload_path', 'MaxMind reader autoload path'),
+            'description' => rotating_ads_lang('rotating_ads_maxmind_autoload_path_description', 'Optional absolute path to the MaxMind DB Reader autoload.php file. The forum root vendor/autoload.php is also detected automatically.'),
+            'optionscode' => 'text',
+            'value' => '',
+            'disporder' => 12,
+            'gid' => $gid
+        ),
+        array(
+            'name' => 'rotating_ads_visitor_ip_source',
+            'title' => rotating_ads_lang('rotating_ads_visitor_ip_source', 'Visitor IP source'),
+            'description' => rotating_ads_lang('rotating_ads_visitor_ip_source_description', 'Use REMOTE_ADDR unless the forum is behind a trusted proxy that overwrites the selected header.'),
+            'optionscode' => "select\nremote_addr=REMOTE_ADDR\ncf_connecting_ip=CF-Connecting-IP\nx_forwarded_for=X-Forwarded-For\nx_real_ip=X-Real-IP",
+            'value' => 'remote_addr',
+            'disporder' => 13,
+            'gid' => $gid
         )
     );
 
@@ -485,7 +526,7 @@ function rotating_ads_export_bundle()
 
     return array(
         'generator' => 'mybb_rotating_ads',
-        'version' => '1.0.2',
+        'version' => '1.0.3',
         'exported_at' => gmdate('c'),
         'ads' => $ads
     );
@@ -618,14 +659,74 @@ function rotating_ads_normalize_country_codes($value)
 
 function rotating_ads_country_code($server = null)
 {
+    global $mybb;
+
+    static $request_country = null;
+    $use_request_cache = !is_array($server);
+    if ($use_request_cache && $request_country !== null) {
+        return $request_country;
+    }
+
     $server = is_array($server) ? $server : $_SERVER;
-    foreach (array('HTTP_CF_IPCOUNTRY', 'GEOIP_COUNTRY_CODE', 'HTTP_X_APPENGINE_COUNTRY') as $key) {
+    $mode = isset($mybb->settings['rotating_ads_country_detection'])
+        ? (string)$mybb->settings['rotating_ads_country_detection']
+        : 'auto';
+    if (!in_array($mode, array('auto', 'headers', 'maxmind', 'language', 'disabled'), true)) {
+        $mode = 'auto';
+    }
+    if ($mode === 'disabled') {
+        $code = '';
+    } elseif ($mode === 'headers') {
+        $code = rotating_ads_header_country_code($server);
+    } elseif ($mode === 'maxmind') {
+        $database_path = isset($mybb->settings['rotating_ads_maxmind_database_path'])
+            ? trim((string)$mybb->settings['rotating_ads_maxmind_database_path'])
+            : '';
+        $code = rotating_ads_maxmind_country_code(rotating_ads_visitor_ip($server), $database_path);
+    } elseif ($mode === 'language') {
+        $code = rotating_ads_language_country_code($server);
+    } else {
+        $code = rotating_ads_header_country_code($server);
+        if ($code === '') {
+            $database_path = isset($mybb->settings['rotating_ads_maxmind_database_path'])
+                ? trim((string)$mybb->settings['rotating_ads_maxmind_database_path'])
+                : '';
+            $code = rotating_ads_maxmind_country_code(rotating_ads_visitor_ip($server), $database_path);
+        }
+        if ($code === '') {
+            $code = rotating_ads_language_country_code($server);
+        }
+    }
+
+    if ($use_request_cache) {
+        $request_country = $code;
+    }
+
+    return $code;
+}
+
+function rotating_ads_header_country_code($server)
+{
+    $headers = array(
+        'HTTP_CF_IPCOUNTRY',
+        'GEOIP_COUNTRY_CODE',
+        'HTTP_X_APPENGINE_COUNTRY',
+        'HTTP_CLOUDFRONT_VIEWER_COUNTRY',
+        'HTTP_FASTLY_CLIENT_COUNTRY_CODE',
+        'HTTP_X_VERCEL_IP_COUNTRY'
+    );
+    foreach ($headers as $key) {
         $code = isset($server[$key]) ? strtoupper(trim($server[$key])) : '';
         if (preg_match('/^[A-Z]{2}$/', $code)) {
             return $code;
         }
     }
 
+    return '';
+}
+
+function rotating_ads_language_country_code($server)
+{
     $language = isset($server['HTTP_ACCEPT_LANGUAGE']) ? (string)$server['HTTP_ACCEPT_LANGUAGE'] : '';
     if (preg_match_all('/(?:^|,)\s*[a-z]{2,3}-([A-Z]{2})\b/i', $language, $matches)) {
         foreach ($matches[1] as $code) {
@@ -634,6 +735,98 @@ function rotating_ads_country_code($server = null)
                 return $code;
             }
         }
+    }
+
+    return '';
+}
+
+function rotating_ads_visitor_ip($server)
+{
+    global $mybb;
+
+    $source = isset($mybb->settings['rotating_ads_visitor_ip_source'])
+        ? (string)$mybb->settings['rotating_ads_visitor_ip_source']
+        : 'remote_addr';
+    $keys = array(
+        'remote_addr' => 'REMOTE_ADDR',
+        'cf_connecting_ip' => 'HTTP_CF_CONNECTING_IP',
+        'x_forwarded_for' => 'HTTP_X_FORWARDED_FOR',
+        'x_real_ip' => 'HTTP_X_REAL_IP'
+    );
+    $key = isset($keys[$source]) ? $keys[$source] : 'REMOTE_ADDR';
+    $value = isset($server[$key]) ? (string)$server[$key] : '';
+
+    foreach (explode(',', $value) as $candidate) {
+        $candidate = trim($candidate);
+        if (filter_var($candidate, FILTER_VALIDATE_IP) !== false) {
+            return $candidate;
+        }
+    }
+
+    return '';
+}
+
+function rotating_ads_load_maxmind_reader()
+{
+    global $mybb;
+
+    if (class_exists('MaxMind\\Db\\Reader')) {
+        return true;
+    }
+
+    $paths = array();
+    if (isset($mybb->settings['rotating_ads_maxmind_autoload_path'])) {
+        $paths[] = trim((string)$mybb->settings['rotating_ads_maxmind_autoload_path']);
+    }
+    if (defined('MYBB_ROOT')) {
+        $paths[] = MYBB_ROOT . 'vendor/autoload.php';
+    }
+
+    foreach (array_unique($paths) as $path) {
+        if ($path !== '' && is_file($path) && is_readable($path)) {
+            require_once $path;
+            if (class_exists('MaxMind\\Db\\Reader')) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+function rotating_ads_maxmind_country_code($ip, $database_path, $reader_factory = null)
+{
+    if (filter_var($ip, FILTER_VALIDATE_IP) === false
+        || $database_path === ''
+        || !is_file($database_path)
+        || !is_readable($database_path)
+        || ($reader_factory === null && !rotating_ads_load_maxmind_reader())) {
+        return '';
+    }
+
+    $reader = null;
+    try {
+        $reader = $reader_factory === null
+            ? new \MaxMind\Db\Reader($database_path)
+            : call_user_func($reader_factory, $database_path);
+        $record = $reader->get($ip);
+        foreach (array('country', 'registered_country') as $section) {
+            $code = isset($record[$section]['iso_code'])
+                ? strtoupper(trim((string)$record[$section]['iso_code']))
+                : '';
+            if (preg_match('/^[A-Z]{2}$/', $code)) {
+                if (method_exists($reader, 'close')) {
+                    $reader->close();
+                }
+                return $code;
+            }
+        }
+    } catch (Exception $exception) {
+        // A lookup failure must never prevent the forum page from rendering.
+    }
+
+    if (is_object($reader) && method_exists($reader, 'close')) {
+        $reader->close();
     }
 
     return '';
