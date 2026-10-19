@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5 - 2026-10-18
+
+- Fixed MyBB-root-relative MaxMind paths such as `/inc/geoip` being checked as filesystem-root paths before resolution, preventing repeated `open_basedir` warnings while preserving local country detection.
+
 ## 1.0.4 - 2026-10-01
 
 - Expanded the README into a complete settings reference with country detection, local MaxMind setup, and visitor IP source guidance.

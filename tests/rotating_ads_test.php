@@ -387,7 +387,7 @@ rotating_ads_test_assert(
 $info = rotating_ads_info();
 rotating_ads_test_assert(
     $info['name'] === 'Rotating Ads'
-    && $info['version'] === '1.0.4'
+    && $info['version'] === '1.0.5'
     && $info['website'] === 'https://github.com/sickprodigy/mybb_rotating-ads_plugin'
     && $info['authorsite'] === 'https://www.sickgaming.net',
     'plugin info should expose localized metadata and version'
@@ -752,7 +752,7 @@ $export = json_decode(rotating_ads_export_json(), true);
 rotating_ads_test_assert(
     isset($export['ads'])
     && count($export['ads']) === count($db->ads)
-    && $export['version'] === '1.0.4',
+    && $export['version'] === '1.0.5',
     'ad export should bundle all records with plugin version metadata'
 );
 

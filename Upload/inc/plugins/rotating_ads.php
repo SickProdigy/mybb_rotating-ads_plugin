@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://github.com/sickprodigy/mybb_rotating-ads_plugin',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '1.0.4',
+        'version' => '1.0.5',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -518,7 +518,7 @@ function rotating_ads_export_bundle()
 
     return array(
         'generator' => 'mybb_rotating_ads',
-        'version' => '1.0.4',
+        'version' => '1.0.5',
         'exported_at' => gmdate('c'),
         'ads' => $ads
     );
@@ -793,12 +793,12 @@ function rotating_ads_maxmind_database_path($path)
         return '';
     }
 
-    if (!is_file($path) && strtolower(substr($path, -5)) !== '.mmdb') {
-        $path = rtrim($path, '/') . '/GeoLite2-Country.mmdb';
-    }
-
     if (defined('MYBB_ROOT') && ($path === '/inc' || strpos($path, '/inc/') === 0)) {
         $path = MYBB_ROOT . ltrim($path, '/');
+    }
+
+    if (!is_file($path) && strtolower(substr($path, -5)) !== '.mmdb') {
+        $path = rtrim($path, '/') . '/GeoLite2-Country.mmdb';
     }
 
     return $path;
