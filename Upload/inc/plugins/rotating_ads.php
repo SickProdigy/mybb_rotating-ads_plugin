@@ -25,7 +25,7 @@ function rotating_ads_info()
         'website' => 'https://github.com/sickprodigy/mybb_rotating-ads_plugin',
         'author' => 'SickProdigy',
         'authorsite' => 'https://www.sickgaming.net',
-        'version' => '1.0.5',
+        'version' => '1.0.6',
         'compatibility' => '18*',
         'license' => 'GPL-3.0-only'
     );
@@ -518,7 +518,7 @@ function rotating_ads_export_bundle()
 
     return array(
         'generator' => 'mybb_rotating_ads',
-        'version' => '1.0.5',
+        'version' => '1.0.6',
         'exported_at' => gmdate('c'),
         'ads' => $ads
     );

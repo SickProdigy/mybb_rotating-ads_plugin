@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6 - 2026-11-23
+
+- Document the native group/default AdminCP grants, exact permission labels, and individual-override troubleshooting while preserving existing access restrictions.
+
 ## 1.0.5 - 2026-10-18
 
 - Fixed MyBB-root-relative MaxMind paths such as `/inc/geoip` being checked as filesystem-root paths before resolution, preventing repeated `open_basedir` warnings while preserving local country detection.
